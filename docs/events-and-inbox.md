@@ -52,26 +52,25 @@ action `run_agent` with that agent.
 Each dispatch is recorded in `event_listener_runs` (shown under the listener) and
 logged to `activity_log` as `listener.run` / `listener.error`.
 
-## Dispatcher cron (one-time setup)
+## Dispatcher cron (scheduled automatically)
 
-The `event-dispatch` edge function does the matching + running. Like the
-`scheduler`, it is **not** auto-scheduled — after the function is deployed, wire
-pg_cron once against the live project (same convention as `0010_scheduled_agents.sql`):
+The `event-dispatch` edge function does the matching + running, ticked every
+minute by pg_cron. **This is no longer a manual step** (it was, before
+`0094_automation_cron.sql`): `_automation_cron_jobs()` is the single source of
+truth for every required tick — `dispatch-events`, `run-due-schedules`,
+`run-ingest` (0100) and `run-email-poll` (0102) — and `setup_automation_cron(base_url)`
+idempotently (re)schedules all of them. Both deploy pipelines call it after
+`db push` (`deploy-migrations.yml`, `release-tenants.yml`), so every project
+self-schedules its crons on deploy.
 
-```sql
-select cron.schedule('dispatch-events', '* * * * *', $$
-  select net.http_post(
-    url := 'https://<project-ref>.supabase.co/functions/v1/event-dispatch',
-    headers := jsonb_build_object('Content-Type', 'application/json',
-                                  'x-cron-secret', (select secret from public.cron_config limit 1)),
-    body := '{}'::jsonb
-  );
-$$);
-```
+The cron secret is read by a subquery *inside* the scheduled command, so it is
+resolved at tick time and never baked into `cron.job.command`.
 
-Until this runs, events still accumulate (and show in the feed) but listeners
-don't fire. Safety: each event is claimed once (`processed_at`), and each tick
-caps how many actions it runs, so chained automations stay bounded.
+To check or repair it, the **Listeners** page shows an Automation-health banner
+backed by `automation_cron_status()`; an admin can re-run the setup from there.
+Until the jobs exist, events still accumulate (and show in the feed) but
+listeners don't fire. Safety: each event is claimed once (`processed_at`), and
+each tick caps how many actions it runs, so chained automations stay bounded.
 
 ## Unified inbox
 
