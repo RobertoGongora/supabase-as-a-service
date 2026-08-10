@@ -1155,7 +1155,11 @@ If you change the schema: update the migration, apply it, run `npm run gen:types
 `supabase/functions/chat/index.ts` (Deno). Calls **OpenRouter** (OpenAI-compatible
 `/chat/completions`) through the shared `supabase/functions/_shared/openrouter.ts`
 client — a thin fetch wrapper (`orComplete` non-streaming, `orStream` streaming)
-that also carries the `reasoning` (effort) and `plugins` (web) fields. **Model
+that also carries the `reasoning` (effort) field and the `openrouter:web_search`
+**server tool** — the request body has no `plugins` field any more (the old
+`plugins:[{id:'web'}]` injected results as a mid-conversation system message that
+Anthropic 400s on multi-turn threads; see `WEB_SEARCH_TOOL` in
+`_shared/openrouter.ts`). **Model
 selection — never hardcode a model id:** the model resolves through the
 `model_profiles` table via `resolveModel(db, key)`
 (`supabase/functions/_shared/models.ts`). Features bind to a profile **key**, not
@@ -1170,11 +1174,15 @@ secrets. It assembles the system prompt by reading the always-on prompts
 (`skills.auto_apply = true`) with the service-role key, then optionally
 appends/replaces with an invoked skill's instructions (`body.system` +
 `body.replaceSystem`); the system prompt is sent as the first `{role:'system'}`
-message. Request body: `{ messages, system?, replaceSystem? }`. It also loads active
-`tools` rows and runs an **agentic loop**: the OpenRouter web search server tool (for `kind = 'web'`)
-and custom `http` tools (POST inputs to `config.url`, feed the response back). It
-appends each assistant turn (content + `tool_calls`) before sending one
-`{role:'tool', tool_call_id}` message per call, then loops to `MAX_TOOL_TURNS`.
+message. Request body:
+`{ messages, system?, replaceSystem?, toolIds?, collectionIds?, cardBoardId?, agentId?,
+conversationId?, persist?, runId? }` (`collectionId` is still accepted as a legacy
+single-id alias). It also loads active `tools` rows and runs an **agentic loop**: the
+OpenRouter web search server tool (for `kind = 'web'`), `builtin` tools via `runBuiltin`,
+namespaced remote tools via `runMcpTool`, and custom `http` tools (POST inputs to
+`config.url`, feed the response back). It appends each assistant turn (content +
+`tool_calls`) before sending one `{role:'tool', tool_call_id}` message per call, then
+loops to `MAX_TOOL_TURNS` (**16** here; the webhook/scheduler loops use 6).
 
 **OpenRouter conventions (do not change without reason):** model ids are OpenRouter
 slugs (`provider/model`, e.g. `anthropic/claude-sonnet-4.5`); reasoning effort goes
