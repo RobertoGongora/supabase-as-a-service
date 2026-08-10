@@ -92,7 +92,7 @@ The OpenRouter API key lives **only** on the server (a Supabase Edge Function), 
 
 - **Frontend:** React 18 · TypeScript · Vite · Tailwind CSS · React Router
 - **Backend:** Supabase — Postgres, Auth, Realtime, Storage, Edge Functions (Deno)
-- **AI:** any model via [OpenRouter](https://openrouter.ai) (default `anthropic/claude-sonnet-4.5`) through a streaming edge function
+- **AI:** any model via [OpenRouter](https://openrouter.ai) (the seeded `orchestrator` profile is `openai/gpt-5.6-luna`) through a streaming edge function
 - **Hosting:** any static host; first-class config for [Railway](https://railway.app)
 
 ## Project layout
@@ -151,8 +151,10 @@ Then sign up, and start chatting.
 | Frontend (build-time) | `VITE_SUPABASE_URL` | Your Supabase project URL. Inlined into the bundle. |
 | Frontend (build-time) | `VITE_SUPABASE_ANON_KEY` | Anon/publishable key. Safe in the browser — RLS protects data. |
 | Edge function secret | `OPENROUTER_API_KEY` | **Server-only.** `supabase secrets set OPENROUTER_API_KEY=…` |
-| Edge function secret | `OPENROUTER_MODEL` | Optional fallback slug when a `model_profiles` row can't be read. Defaults to `anthropic/claude-sonnet-4.5`. |
+| Edge function secret | `OPENROUTER_MODEL` | Optional fallback slug when a `model_profiles` row can't be read. Defaults to `openai/gpt-5.6-luna`. |
 | Edge function secret | `OPENROUTER_EFFORT` | Optional. `low` \| `medium` \| `high` reasoning effort. Defaults to none. |
+| Edge function secret | `OPENROUTER_SITE_URL` | Optional. Sent as the `HTTP-Referer` ranking header. |
+| Edge function secret | `OPENROUTER_APP_NAME` | Optional. Sent as the `X-Title` ranking header. |
 
 `VITE_*` vars are read at **build time** — on a host like Railway they must be set before the build runs.
 
