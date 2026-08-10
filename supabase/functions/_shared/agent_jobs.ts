@@ -34,6 +34,22 @@ export const CAPABILITY_OPERATIONS: Record<string, string[]> = {
 
 export const CAPABILITIES = Object.keys(CAPABILITY_OPERATIONS)
 
+// Self-hosted deployments can plug in EXTRA capability workers (a homelab
+// "builder", a GPU box, …) without forking this allow-list. The caller owns
+// the config source (the Deno glue reads AGENT_JOBS_EXTRA_CAPABILITIES; a
+// worker could pass its own) — this module stays pure and never touches env.
+// Operations must be prefixed with their capability ("builder.build_issue"),
+// same contract as the built-in ones; anything malformed is ignored.
+export function registerCapabilities(extra: Record<string, string[]>): void {
+  for (const [cap, ops] of Object.entries(extra ?? {})) {
+    if (!/^[a-z][a-z0-9_]{0,31}$/.test(cap) || !Array.isArray(ops)) continue
+    const clean = ops.filter((o) => typeof o === 'string' && o.startsWith(cap + '.'))
+    if (!clean.length) continue
+    CAPABILITY_OPERATIONS[cap] = [...new Set([...(CAPABILITY_OPERATIONS[cap] ?? []), ...clean])]
+    if (!CAPABILITIES.includes(cap)) CAPABILITIES.push(cap)
+  }
+}
+
 // Status set — small and explicit (see the build handoff).
 export const JOB_STATUSES = [
   'queued',

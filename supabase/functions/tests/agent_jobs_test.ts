@@ -6,12 +6,14 @@ import { assertEquals, assertStringIncludes } from 'jsr:@std/assert@1'
 import {
   backoffSeconds,
   buildIdempotencyKey,
+  CAPABILITY_OPERATIONS,
   capabilityForOperation,
   clampPriority,
   isValidOperation,
   manifestIds,
   nextFailureState,
   normalizeInputManifest,
+  registerCapabilities,
   stableJson,
   summarizeJob,
   summarizeResult,
@@ -141,4 +143,21 @@ Deno.test('summarizeJob: shows status/attempts and outputs when completed', () =
   })
   assertStringIncludes(done, 'outputs:')
   assertStringIncludes(done, 'x.docx')
+})
+
+Deno.test('registerCapabilities: adds a custom capability, ignores malformed input', () => {
+  registerCapabilities({
+    builder: ['builder.build_issue', 'office.create_docx', 42 as unknown as string],
+    'Bad Name': ['bad.op'],
+    empty: [],
+  })
+  assertEquals(capabilityForOperation('builder.build_issue'), 'builder')
+  assertEquals(isValidOperation('builder', 'builder.build_issue'), true)
+  // cross-capability op and non-strings were dropped; junk keys never registered
+  assertEquals(isValidOperation('builder', 'office.create_docx'), false)
+  assertEquals(capabilityForOperation('bad.op'), null)
+  assertEquals(validateOperation('builder', 'builder.build_issue'), null)
+  // registering again is idempotent (no duplicate ops)
+  registerCapabilities({ builder: ['builder.build_issue'] })
+  assertEquals(CAPABILITY_OPERATIONS.builder, ['builder.build_issue'])
 })

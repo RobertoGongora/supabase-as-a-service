@@ -38,9 +38,19 @@ import {
   DEFAULT_PRIORITY,
   normalizeInputManifest,
   OPEN_STATUSES,
+  registerCapabilities,
   summarizeJob,
   validateOperation,
 } from './agent_jobs.ts'
+
+// Self-hosted extension point: register extra capability workers, e.g.
+// AGENT_JOBS_EXTRA_CAPABILITIES='{"builder":["builder.build_issue"]}'.
+// A malformed value must never take the shared builtins down.
+try {
+  registerCapabilities(JSON.parse(Deno.env.get('AGENT_JOBS_EXTRA_CAPABILITIES') ?? '{}'))
+} catch {
+  // ignore — the built-in office/media allow-list still applies
+}
 import {
   createLoop,
   findOrCreateLoopAgent,
