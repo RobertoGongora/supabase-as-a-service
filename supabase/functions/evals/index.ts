@@ -4,7 +4,10 @@
 // (executeSuiteRun) so the UI path here and the MCP path (triggerEvalRun) share
 // one implementation.
 //   • target `rag`  — embeds each case input (gte-small), retrieves top-K chunks
-//     via match_document_chunks, checks assertions deterministically. No model.
+//     through the shared hybridChunkSearch (one search_chunks_hybrid RPC, then
+//     RRF over its vector + keyword ranks — the same retrieval search_documents
+//     serves, so live and eval can't drift), checks assertions
+//     deterministically. No model.
 //   • target `chat`/`agent` — answers each question through the REAL orchestrator
 //     (optionally grounded in the suite's collections), then a JUDGE model grades
 //     the answer against the case's reference + rubric. Verdict is enforced in

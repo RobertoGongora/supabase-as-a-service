@@ -494,9 +494,13 @@ PR workflows — GITHUB_TOKEN anti-recursion).
   CAPTCHA/honeypot; a fuller query surface — sorting, richer filters/joins — and column
   reordering/rename.)*
 - **PDF knowledge (RAG):** uploading a PDF enqueues a `documents` row (trigger on
-  `files`). A `pg_cron` tick calls the `ingest` edge function, which extracts the
-  text layer (`unpdf`), chunks it, embeds each chunk **free** with the in-edge
-  `gte-small` model, and stores `document_chunks` in **pgvector**. Documents are
+  `files`). A `pg_cron` tick calls the `ingest` edge function, which is **two-phase and
+  resumable** so a large deck can't die on the edge worker's compute limit: a `pending`
+  doc is PARSED (download → `unpdf` text layer → `chunkText` → insert every chunk with
+  `embedding = NULL`) and flips to `processing`; each later tick EMBEDS a small batch of
+  the still-NULL chunks **free** with the in-edge `gte-small` model until none remain, then
+  flips to `done`. Because chunks fill one at a time, a run that dies mid-batch loses no
+  progress. Chunks live in **pgvector** (`document_chunks`, 384 dims). Documents are
   **workspace-shared by default** (`documents.scope = 'workspace'`): any member's
   chat can search their chunks. The owner can flip a document to `'private'` in
   Files ("Only me"). RLS enforces this — members read `scope = 'workspace'` rows,
