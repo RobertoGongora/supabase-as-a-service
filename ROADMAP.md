@@ -17,25 +17,31 @@ model (hosted or local, OpenAI-compatible) is one admin edit away.
 The roadmap below is largely about keeping the quality while shrinking the bill — and
 making the savings visible.
 
-## Now: shared knowledge (specs written, in progress)
+## Now: shared knowledge
 
-The core promise — every piece of work makes the next one faster, *for the whole team* —
-needs two changes that are fully specified and ready to build:
+The core promise — every piece of work makes the next one faster, *for the whole team*.
 
-- **Workspace-shared documents** ([spec](./docs/tasks/shared-knowledge.md)) — uploaded
-  PDFs join the team knowledge base by default, with a per-document "Only me" opt-out.
-  Today knowledge is siloed per uploader; this is the fix.
+- **Workspace-shared documents** ([spec](./docs/tasks/shared-knowledge.md)) — ✅ Shipped
+  (migration `0013`). Uploaded PDFs join the team knowledge base by default
+  (`documents.scope = 'workspace'`), with a per-document "Only me" opt-out in Files.
+  Only the extracted text is shared; the raw file stays owner-private. Pushed notes
+  (`add_note`) land in the same knowledge base (`0024`).
+- **Hybrid retrieval** — ✅ Shipped (`0086`/`0087`). `search_documents` no longer runs a
+  cosine search alone: one `search_chunks_hybrid` RPC returns each chunk's vector rank
+  **and** keyword (full-text) rank, and `_shared/retrieval.ts` fuses them with reciprocal
+  rank fusion — so exact terms, IDs and rare tokens stop falling through.
 - **Artifacts feed the knowledge base** ([spec](./docs/tasks/artifact-knowledge.md)) —
-  proposals and docs *made in the system* get indexed on create/edit, so last week's
-  proposal is context for this week's. Privacy follows the artifact's visibility:
-  Private artifacts compound only for their owner.
+  still to build. Proposals and docs *made in the system* would get indexed on
+  create/edit, so last week's proposal is context for this week's. Privacy follows the
+  artifact's visibility: Private artifacts compound only for their owner.
 
 ## Next: cost — see it, cap it, shrink it
 
-The foundation is specced: **[Model Profiles](./docs/tasks/model-profiles.md)** — named
-job slots (`orchestrator`, `utility`) the workspace assigns models to, managed in
-Settings. Features bind to the slot, never to a model id, so swapping in a cheaper
-model is one admin edit, not a code change.
+The foundation is in place: **[Model Profiles](./docs/tasks/model-profiles.md)** —
+✅ shipped in migration `0014`. Named job slots (`orchestrator`, `utility`) the workspace
+assigns models to, managed in **Settings → Models** and resolved through
+`resolveModel(db, key)`. Features bind to the slot, never to a model id, so swapping in a
+cheaper model is one admin edit, not a code change.
 
 1. **Token & cost tracking.** ✅ Shipped — every model call (chat, webhook,
    scheduled agents, guardrails) writes a `usage_events` row with tokens + cost, and
@@ -54,11 +60,12 @@ model is one admin edit, not a code change.
    (OpenAI-compatible), so a workspace can point any profile at any model (hosted or
    local) from Settings → Models. Per-profile model ids are OpenRouter slugs.
 
-## Next: guardrails
+## Guardrails — ✅ shipped
 
 Webhooks accept input from the outside world by design, and agents can hold tools —
-that combination needs a checkpoint. The plan
-([spec](./docs/tasks/guardrails.md)) is a **Guardrails** section of the app
+that combination needs a checkpoint. Migration `0015` and
+`supabase/functions/_shared/guardrails.ts` delivered the plan
+([spec](./docs/tasks/guardrails.md)): a **Guardrails** section of the app
 (admin-managed, alongside Tools and Prompts):
 
 - A guardrail is a **separate pre-flight check by a cheap model** (e.g. Haiku), run
@@ -70,12 +77,17 @@ that combination needs a checkpoint. The plan
   behavior from inside the same model call, which means injected payload text can argue
   with them. A guardrail sits outside the call: no tools, no conversation, output
   parsed, decision logged to the activity feed.
-- Shipping with one deterministic rule alongside the model check, because an LLM
+- One deterministic rule ships alongside the model check, because an LLM
   guardrail is a mitigation, not a boundary: **unattended runs (webhooks, schedules)
   get read-only tools unless explicitly opted in per webhook.**
 
 This doubles as cost infrastructure: the same cheap-model pre-flight that screens a
 payload can also classify it for routing (see model routing above).
+
+The **Security** dashboard (`0058`) is the deterministic companion: a repeatable scan
+over configuration — secretless webhooks, tool-enabled webhooks, missing blocking
+guardrails, stale tokens, public-artifact inventory — with findings you can dismiss or
+promote onto the Features board.
 
 ## Next: the proposal workflow, finished
 
