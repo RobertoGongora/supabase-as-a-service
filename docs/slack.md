@@ -15,7 +15,9 @@ Slack (app_mention)
         3. dedupe on event_id (Slack retries on slow acks)
         4. ack 200 within 3s, then in the background:
              binding = slack_channel_bindings[channel_id]
-             system  = agent.instructions (or a default) + loadCollectionsContext(...)
+             system  = workspace time + always-on prompts (skills.auto_apply)
+                       + agent.instructions (or a default)
+                       + loadCollectionsContext(...)
              guardrails (webhook context, fail closed)
              agent loop (tools only when the binding sets allow_tools)
              chat.postMessage → reply in the thread
@@ -133,11 +135,23 @@ Haiku (or any cheaper OpenRouter model) to tune the bill.
   `webhooks.allow_tools`: an untrusted room can't make the agent act unless
   an admin opts that room in.
 
+## Posting proactively
+
+The reply path above is reactive. For the other direction there is a seeded
+`send_slack_message` builtin (migration `0107`, handler in
+`supabase/functions/_shared/builtins.ts`): a scheduled / loop / webhook / chat
+agent can post into a channel — a daily summary to `#standup`, an alert — without
+waiting to be @mentioned. It takes `channel` (id or `#name`) + `text` (markdown is
+converted to mrkdwn) + an optional `thread_ts`.
+
+It is exfiltration-capable like `send_email`, so it is an ordinary tool row: it
+ships **inactive**, an admin turns it on in Tools once Slack is connected, and
+agent `tool_ids` scoping plus the `webhooks.allow_tools` gate still apply. Posts
+are rate-limited per hour and logged.
+
 ## Not built yet (follow-ups)
 
 - DMs to the bot (`message.im`) answering with the DM-er's own context.
-- A `send_slack_message` builtin so scheduled agents can post proactive
-  updates into bound rooms.
 - In-channel binding management (`@bot use collection "Acme"`).
 - A per-thread cooldown / rate cap for ambient channels, and resolving Slack
   display names on captured inbox messages (they store the raw user id today).
