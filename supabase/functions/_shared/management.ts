@@ -1,5 +1,6 @@
 // Supabase Management API client — the ONLY module that touches the platform
-// access token (SUPABASE_PAT). Forge uses it to deploy/delete edge functions
+// access token (the `FORGE_PAT` secret; see the note below on why it can't be
+// called SUPABASE_*). Forge uses it to deploy/delete edge functions
 // programmatically from inside the app. Keep the PAT confined here: it is
 // org-powerful, so nothing else should read it.
 //

@@ -1,9 +1,9 @@
 // Supabase Edge Function: `chat`
 // Streams a completion to the browser as SSE. Runs an agentic tool loop: the
-// assistant can call tools (web search via the OpenRouter web plugin + custom
-// HTTP tools defined in the `tools` table), the function executes them and feeds
-// results back, looping until the model is done. The OpenRouter key stays
-// server-side (verify_jwt=true).
+// assistant can call tools (the OpenRouter web-search SERVER tool, builtins,
+// namespaced remote MCP tools, and custom HTTP tools defined in the `tools`
+// table), the function executes them and feeds results back, looping until the
+// model is done. The OpenRouter key stays server-side (verify_jwt=true).
 //
 // The system prompt is assembled from the always-on prompts (skills.auto_apply).
 // Tools are loaded from the `tools` table (is_active = true).

@@ -16,7 +16,7 @@ export interface ChatMessage {
 /**
  * Streams a completion from the `chat` edge function.
  * Calls `onToken` for each text delta and resolves with the full text.
- * The edge function holds the Anthropic key server-side; we only pass the
+ * The edge function holds the OpenRouter key server-side; we only pass the
  * user's access token so `verify_jwt` can authorize the call.
  */
 export async function streamChat(

@@ -15,7 +15,7 @@
 //   GET    /:id                    → read one (includes content + its collections)
 //   PATCH  /:id  (or PUT)          → update fields you pass; collection(s) are added (not replaced)
 //   DELETE /:id                    → delete one
-//   GET    /  (no Authorization)   → human-readable HTML docs (so opening the URL in a browser explains itself)
+//   GET    /  (no Authorization)   → plain-text docs (so opening the URL in a browser explains itself)
 //   GET    /docs                   → the same docs, always
 //
 // "Collection tag": pass `collection` (a name or id — created if missing) or
