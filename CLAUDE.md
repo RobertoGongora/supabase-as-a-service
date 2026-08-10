@@ -1213,8 +1213,20 @@ call (it's a one-line edit in Settings → Models).
 
 ## Workflow
 
-Trunk-based: commit and push directly to `main` (no PR flow). Run `npm run build` first.
-Hosting auto-deploys from `main`.
+`main` is the trunk and hosting auto-deploys from it, but work lands there **through a
+pull request**, not by pushing straight to `main`. Roughly two thirds of the history is
+squash-merged PRs (`Subject (#123)`), the feature bot is told "Do NOT push to main. Do NOT
+merge the PR" (`claude-feature.yml`), and `test.yml` runs lint + build + `npm test` +
+`deno test` on every `pull_request`. Squash-merge, so the subject keeps its `(#123)`
+suffix.
+
+Before opening a PR run `npm run build` (it typechecks the whole app), `npm run lint`, and
+`npm test`; add `npm run test:deno` if you touched `supabase/functions/`. The bot's PRs
+can't trigger `pull_request` workflows (GITHUB_TOKEN anti-recursion), which is why
+`claude-feature.yml` re-runs the same checks itself.
+
+Branch names in the history: `feature/issue-<n>` for bot-built issues, `claude/<topic>`
+for ad-hoc agent branches, `fix/<topic>` for one-off repairs.
 
 **Never commit directly to `release`.** `release` is a release cut of `main` and only ever
 receives changes by merging `main` into it (the `main → release` PR). Committing straight onto
