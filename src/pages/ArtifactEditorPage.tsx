@@ -69,10 +69,15 @@ export default function ArtifactEditorPage() {
     setDirty(true)
   }, [])
 
-  // GitHub-style image drop/paste: upload each image to the public
-  // `artifact-images` bucket (a stable, non-expiring URL that keeps working
-  // when the artifact is shared publicly) and splice a markdown `![](url)`
-  // link into the body at the caret. Non-image files are ignored.
+  // GitHub-style image drop/paste: upload each image to the `artifact-images`
+  // bucket (stamping artifact_id in the object metadata, which is what 0073's
+  // read policy matches on) and splice a markdown `![](url)` link into the body
+  // at the caret. Non-image files are ignored.
+  //
+  // KNOWN ISSUE: the bucket is private since 0073, and the URL spliced in below
+  // is a 7-day signed URL — so an embedded image breaks a week after it is
+  // pasted. 0073 intended the frontend to sign for private artifacts and use the
+  // public URL once the artifact is shared; that branch was never written.
   const insertImages = useCallback(
     async (files: File[]) => {
       if (!user || !artifact) return
