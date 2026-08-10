@@ -40,9 +40,10 @@ agent scoping, the `webhooks.allow_tools` lock, guardrails).
 
 ## 3. Use it
 
-- **Internal assistant / agents / scheduler / webhooks:** the Playwright tools are wired into
-  the three agent loops beside `http`/`builtin` dispatch, so "take a screenshot of
-  example.com" just works once the handle is active.
+- **Internal assistant / agents / scheduler / webhooks:** the Playwright tools are wired in
+  beside `http`/`builtin` dispatch in every loop that resolves external MCP servers — chat,
+  webhook, scheduler, slack-events, event-dispatch and the direct `run-tool` runner — so
+  "take a screenshot of example.com" just works once the handle is active.
 - **Claude Desktop / Claude Code / other external AI:** connect to the workspace MCP endpoint
   as usual (Settings → Connect Claude for the token + snippets). The workspace MCP server's
   `tools/list` now includes the connected Playwright tools alongside the build/authoring

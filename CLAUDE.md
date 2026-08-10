@@ -592,7 +592,9 @@ PR workflows — GITHUB_TOKEN anti-recursion).
   `action_config`. `ListenersPage` (route `/listeners`, Automation) is the "when this /
   do this" CRUD, with recent `event_listener_runs`. The **`event-dispatch` edge function**
   (`verify_jwt: false`, cron-secret gated like the scheduler; ticked by pg_cron via pg_net —
-  the `cron.schedule` is applied out-of-band after deploy, same convention as 0010) claims
+  the `cron.schedule` is no longer out-of-band: it is listed in `_automation_cron_jobs()`
+  and (re)applied by `setup_automation_cron()`, which both deploy pipelines call after
+  `db push` — see migration 0094) claims
   unprocessed events (one-time `processed_at` claim = idempotent), matches them with the
   pure `_shared/events.ts` `matchListener` (unit-tested), and runs each action AS the
   listener's owner (agent loop mirrors the scheduler; `run_tool` mirrors run-tool's dispatch;
@@ -677,9 +679,19 @@ PR workflows — GITHUB_TOKEN anti-recursion).
   profile) with `buildParticipationSystem(participation_prompt)` and returns a strict-JSON
   verdict via `parseParticipationVerdict` (fails **silent** — a false positive/spam is worse
   than a miss). On `respond:true` it runs the same reply path as an @mention. The new pure
-  helpers live in `_shared/slack.ts` and are unit-tested. *(Planned: DMs, a
-  `send_slack_message` builtin for scheduled/ambient posts, in-channel binding commands, a
-  per-thread cooldown, name-resolving captured messages.)*
+  helpers live in `_shared/slack.ts` and are unit-tested.
+  **Proactive posting (migration 0107):** the seeded `send_slack_message` builtin is the
+  other direction — a scheduled / loop / webhook / chat agent posts into a channel
+  (`channel` id or `#name`, markdown → mrkdwn via `toMrkdwn`, optional `thread_ts`) instead
+  of only answering an @mention. It reads the bot token from Vault through the same
+  service-role-only `read_slack_secrets` RPC slack-events uses, caps posts per rolling hour
+  (`SLACK_SEND_LIMIT_PER_HOUR = 30`, counted off `activity_log` `slack.sent`), and is
+  exfiltration-capable like `send_email` — so it is an ordinary tool row, shipped
+  **inactive**, subject to admin activation, agent `tool_ids` scoping and
+  `webhooks.allow_tools`. The Slack listener also now layers `loadAlwaysOnPrompts()` under
+  the channel prompt, so a bound room gets the workspace's always-on knowledge.
+  *(Planned: DMs, in-channel binding commands, a per-thread cooldown, name-resolving
+  captured messages.)*
 - **Prompts & skills:** one `skills` table, two modes.
   - `auto_apply = true` → **always-on** prompts (admin-managed, workspace-wide). The
     seeded `is_builtin` "How this workspace works" prompt teaches the assistant the
@@ -1107,7 +1119,9 @@ PR workflows — GITHUB_TOKEN anti-recursion).
 
 ```
 src/
-  App.tsx                      Routes (public: /login, /share/a/:slug; rest protected)
+  App.tsx                      Routes. Public: /login, /join/:token (invite links),
+                               /share/a/:slug, /p/:slug. Everything else is behind
+                               ProtectedRoute + Layout.
   contexts/AuthContext.tsx     Supabase Auth provider + useAuth()
   components/
     Layout.tsx                 App shell: responsive sidebar/drawer + top bar
