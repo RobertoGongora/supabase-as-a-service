@@ -99,15 +99,30 @@ The OpenRouter API key lives **only** on the server (a Supabase Edge Function), 
 
 ```
 src/
+  App.tsx                      Routes (public: /login, /join/:token,
+                               /share/a/:slug, /p/:slug; the rest protected)
   contexts/AuthContext.tsx     Supabase Auth wrapper (session, sign in/up/out)
   components/                  Layout/nav, markdown, sharing controls, icons
-  pages/                       Login, Chat, Artifacts, Artifact editor,
-                               Public artifact, Files, Settings
-  lib/                         Supabase client, chat streaming, types, utils
+  pages/                       One page per sidebar area — Chat, Artifacts,
+                               Collections, Files, Tables, To-dos, Links,
+                               Whiteboards, Cards, Agents, Webhooks, Tools,
+                               Forge, Evals, Security, Usage, …
+  pages/settings/              Settings is a section: one page per area
+  lib/                         Supabase client, chat streaming, typed schema,
+                               and the pure logic the tests cover
+  lib/nav.ts                   Single source of truth for the sidebar
 supabase/
-  migrations/0001_init.sql     Schema + RLS + realtime + storage policies
-  functions/chat/index.ts      Edge function that streams the model (via OpenRouter)
+  migrations/                  Sequentially-numbered SQL — schema, RLS,
+                               realtime, storage policies, seeded tools
+  functions/                   ~29 Deno edge functions (chat, mcp, webhook,
+                               scheduler, event-dispatch, artifacts, todos, …)
+  functions/_shared/           The code every agent loop shares
+  functions/tests/             Deno unit tests for the pure edge-function logic
+workers/                       Capability workers (Docker) — separate workspace
+control-plane/                 Hosted-offering provisioner — separate workspace
+server.js                      Railway production server (SPA + MCP/OAuth proxy)
 railway.json                   Build/serve config for Railway
+CLAUDE.md                      The engineering reference for this repo
 DEPLOY.md                      End-to-end deployment guide
 ```
 
@@ -285,14 +300,17 @@ This is a foundation meant to grow. Conversations and artifacts are the natural 
   people. Bob's scheduling agent negotiates a meeting time with Jan's agent and preps the
   agenda; a shared project agent keeps the team's meeting notes and follow-ups in sync. The
   intranet becomes the place these agents discover and message one another.
-- 👥 **Team sharing & spaces** — shared workspaces, roles, comments.
+- 👥 **Team sharing & spaces** — roles beyond admin/member, comments. (Shared threads,
+  workspace-visible assets, and collections already ship.)
 - 🧩 **Richer artifacts** — versions, attachments, embeds.
-- 👍 **Feedback on every answer** — mark any reply (*off target* / *needs work* / *exactly
-  right*) with an optional note, so the workspace learns what "good" looks like for your
-  business and improves over time. The seed for evaluation.
-- ✅ **Output evaluation** — score an agent's output against your own standard so a proven
-  workflow can run unattended, with confidence.
+- 👍 **Feedback on every answer** — ✅ shipped: mark any reply (*off target* / *needs work* /
+  *exactly right*) with an optional note; the admin **Feedback** page summarises what "good"
+  looks like for your business.
+- ✅ **Output evaluation** — ✅ shipped: the **Evals** area scores an agent's output against
+  your own rubric, including tool-usage assertions and a model-vs-model matrix.
 - 🖥️ **Local Only Version** — run locally, Tail Scale integration and more
+
+For the fuller picture — what's shipped, what's next, and why — see [`ROADMAP.md`](./ROADMAP.md).
 
 Issues and PRs welcome.
 
