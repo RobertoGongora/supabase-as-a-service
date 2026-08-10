@@ -40,13 +40,13 @@ It leans on Supabase for the parts that should be boring and solid, and adds a c
 - 🔐 **Auth** — email/password and magic links via Supabase Auth. A profile is created automatically on signup.
 - 💬 **AI chat** — talk to any model (via OpenRouter) to draft, plan, and build. Replies **stream** token-by-token, persist to Postgres, and sync **live across devices** over realtime websockets.
 - ⚡ **Prompts & skills** — **always-on** prompts (a built-in "how this system works" prompt + admin-set workspace context like *"this is Acme's intranet"*) shape every chat; **on-demand** skills run from chat with `/`. The assistant can also **create artifacts directly** ("turn that into something I can share") — they're saved and linked inline. These are the seed for scheduled/promotable agents.
-- 📄 **Artifacts** — turn any reply (or a blank page) into a markdown / code / HTML / text artifact with live preview. Share it as **Private**, **Unlisted** (anyone with the link), or **Public** — served to anonymous visitors at `/share/a/:slug`.
-- 📁 **Files** — upload to a private, per-user storage bucket and hand out **7-day signed share links** when you want to.
+- 📄 **Artifacts** — turn any reply (or a blank page) into a markdown / code / HTML / text artifact with live preview. Share it as **Private**, **Workspace** (every member), **Unlisted** (anyone with the link), or **Public** — the last two are served to anonymous visitors at `/share/a/:slug`, optionally behind a share password.
+- 📁 **Files** — upload to a private, per-user storage bucket, then share in bulk: a **signed link** scoped to 1 hour / 1 day / 1 week, or **publish** a copy to a public bucket for a permanent URL you can bake into a shared page.
 - 🔒 **Invite-only** — the first user bootstraps the workspace and becomes admin; after that, only emails an admin has invited can sign up (enforced in the database).
 - 🪝 **Webhooks** — create a webhook to get a public URL, attach a prompt, and every inbound POST is processed by the assistant. Events + results are logged live. The action the result triggers (artifact, chat, outbound call) plugs in next.
 - 🛠️ **Tools (tools-as-data)** — give the assistant real abilities it can call mid-chat. Built-in **web search + fetch** (it reads URLs itself), plus **custom HTTP tools**: define a name, description, and input schema, point it at any URL, and the chat function runs the agentic loop. Adding a tool is adding a row — the system extends its own capabilities.
 - 🛡️ **Guardrails** — admin-managed pre-flight checks evaluated by a cheap, fast model **before** the main model runs. The verdict comes back as data and is enforced **in code** (block the run or just flag it) — never pasted into the main prompt. Webhooks fail **closed** (an evaluator error blocks); chat fails **open**. Webhook-triggered agents also run **read-only by default** — tools are off unless the webhook explicitly allows them.
-- 📧 **Email** — agents can **send and check email**: configure a provider once in Settings (Postmark or Resend) and from then on just say *"email me a summary every morning."* The API key lives only in **Supabase Vault**; sending is rate-limited with an optional recipient allowlist, and incoming mail is parsed in (no IMAP) so the assistant can read it.
+- 📧 **Email** — agents can **send and check email**: configure a provider once in Settings (Postmark or Resend) and from then on just say *"email me a summary every morning."* The API key lives only in **Supabase Vault**; sending is rate-limited with an optional recipient allowlist. Incoming mail arrives either by **push** (a provider's inbound-parse webhook) or by **pull** — add an **IMAP inbox** and the workspace polls it every few minutes. Either way it lands in the unified Inbox, where the assistant can read it and Listeners can route it.
 - 📎 **Chat with files** — attach files in chat; they land in your Files area and the assistant reads them (images, PDFs, and text) to answer questions or parse them.
 - 📚 **Team knowledge base** — uploaded PDFs are auto-indexed into pgvector (free, in-edge embeddings) and become **shared workspace knowledge by default** — anyone's chat can search them and cite the source. Flip any document to **"Only me"** for privacy. Only the extracted text is shared; the raw file stays private.
 - 📊 **Activity** — a live, real-time feed of what's happening across the workspace: webhook events, tool calls, artifacts, and uploads, all in one place.
@@ -116,7 +116,7 @@ DEPLOY.md                      End-to-end deployment guide
 <img width="2650" height="1572" alt="CleanShot 2026-06-21 at 21 44 26@2x" src="https://github.com/user-attachments/assets/49efe409-dda5-4c15-8142-5e6f9c0f1d44" />
 
 
-**Prerequisites:** Node 18+, a [Supabase](https://supabase.com) project, an [OpenRouter API key](https://openrouter.ai/keys), and the [Supabase CLI](https://supabase.com/docs/guides/cli).
+**Prerequisites:** Node 20 (see `.nvmrc` / `engines` in `package.json`), a [Supabase](https://supabase.com) project, an [OpenRouter API key](https://openrouter.ai/keys), and the [Supabase CLI](https://supabase.com/docs/guides/cli).
 
 ```bash
 # 1. Install
