@@ -114,7 +114,7 @@ src/
 supabase/
   migrations/                  Sequentially-numbered SQL — schema, RLS,
                                realtime, storage policies, seeded tools
-  functions/                   ~29 Deno edge functions (chat, mcp, webhook,
+  functions/                   27 Deno edge functions (chat, mcp, webhook,
                                scheduler, event-dispatch, artifacts, todos, …)
   functions/_shared/           The code every agent loop shares
   functions/tests/             Deno unit tests for the pure edge-function logic
