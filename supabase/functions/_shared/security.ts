@@ -1,5 +1,7 @@
 // The workspace security posture scan behind the `run_security_scan` builtin
-// (Governance → Security dashboard; seeded in migration 0056).
+// (Governance → Security dashboard; seeded in migration 0058 — it first shipped
+// as a second 0056_*.sql, which collided with 0056_conversation_pinned.sql and
+// was renumbered).
 //
 // Split on purpose, following the repo's extract-pure-logic pattern:
 //   * gatherPosture(db)      — service-role queries → a plain PostureSnapshot.

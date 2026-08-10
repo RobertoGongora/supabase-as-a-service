@@ -1,6 +1,6 @@
 # Events, listeners & the unified inbox
 
-Two connected features (migrations `0060_events.sql` + `0061_messages.sql`):
+Two connected features (migrations `0063_events.sql` + `0064_messages.sql`):
 
 - **Events + event listeners** — a workspace pub/sub automation substrate.
 - **Unified inbox** — one place for messages from any source (email, Slack,

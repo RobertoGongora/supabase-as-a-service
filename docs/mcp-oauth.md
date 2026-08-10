@@ -37,7 +37,7 @@ Key properties:
   bound to `redirect_uri` + challenge; `redirect_uri` is exact-matched against the
   DCR-registered set; refresh rotates the token in place.
 
-Backing tables: migration `0070_mcp_oauth.sql` (`oauth_clients`,
+Backing tables: migration `0077_mcp_oauth.sql` (`oauth_clients`,
 `oauth_authorization_codes`, + nullable `expires_at`/`refresh_token`/`client_id` on
 `mcp_tokens`). Pure logic in `supabase/functions/_shared/oauth.ts`, unit-tested in
 `tests/oauth_test.ts`.

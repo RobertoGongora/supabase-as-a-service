@@ -4,7 +4,7 @@
 // `event_listeners`, and runs the matching listeners' actions — the "listener"
 // half of the events + event-listeners feature.
 //
-// Actions (see 0060_events.sql):
+// Actions (see 0063_events.sql):
 //   run_agent         run an agent over the event (mirrors the scheduler loop)
 //   run_tool          call one tool directly ({{event}} -> event JSON), no model
 //   add_to_collection file the event's entity into a collection
