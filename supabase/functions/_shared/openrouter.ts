@@ -10,7 +10,7 @@
 
 import { describeModelError } from './errors.ts'
 
-const OR_URL = 'https://openrouter.ai/api/v1/chat/completions'
+const OR_URL = Deno.env.get('OPENROUTER_BASE_URL') ?? 'https://openrouter.ai/api/v1/chat/completions'
 
 export type Effort = 'low' | 'medium' | 'high'
 
@@ -81,7 +81,14 @@ function buildBody(req: ORRequest, stream: boolean): Record<string, unknown> {
     max_tokens: req.maxTokens ?? 4096,
     stream,
   }
-  if (req.tools && req.tools.length) body.tools = req.tools
+  if (req.tools && req.tools.length) {
+    // openrouter:web_search is an OpenRouter-only tool; drop it on custom backends.
+    const customBackend = !!Deno.env.get('OPENROUTER_BASE_URL')
+    const tools = customBackend
+      ? req.tools.filter((t) => (t as { type?: string }).type !== 'openrouter:web_search')
+      : req.tools
+    if (tools.length) body.tools = tools
+  }
   if (req.reasoning) body.reasoning = req.reasoning
   return body
 }

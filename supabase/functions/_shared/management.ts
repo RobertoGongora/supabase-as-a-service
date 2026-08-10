@@ -14,6 +14,58 @@
 
 const API_BASE = 'https://api.supabase.com/v1'
 
+// --- Self-hosted deploy backend ------------------------------------------------
+// Managed Supabase exposes the Management API above; a self-hosted stack does
+// not. When a local deployer is configured (FORGE_LOCAL_DEPLOY_URL), forge writes
+// functions through it instead. Selection is gated so managed deployments are
+// untouched.
+function isManagedHost(): boolean {
+  const url = Deno.env.get('SUPABASE_URL') ?? ''
+  return /^https?:\/\/[a-z0-9]+\.supabase\.(co|in)\b/i.test(url)
+}
+function localDeployUrl(): string | undefined {
+  return Deno.env.get('FORGE_LOCAL_DEPLOY_URL') ?? undefined
+}
+function deployMode(): 'management' | 'local' {
+  const m = (Deno.env.get('FORGE_DEPLOY_MODE') ?? 'auto').toLowerCase()
+  if (m === 'management' || m === 'local') return m
+  if (localDeployUrl() && !isManagedHost()) return 'local'
+  return 'management'
+}
+async function localDeploy(opts: DeployOptions): Promise<DeployResult> {
+  const base = localDeployUrl()
+  if (!base) return { ok: false, status: 0, body: 'Local deployer not configured (FORGE_LOCAL_DEPLOY_URL).' }
+  const files: DeployFile[] = opts.files?.length ? opts.files : [{ name: 'index.ts', content: opts.source ?? '' }]
+  const entrypoint = opts.entrypointPath ?? 'index.ts'
+  try {
+    const res = await fetch(`${base.replace(/\/$/, '')}/deploy`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-forge-secret': Deno.env.get('FORGE_LOCAL_DEPLOY_SECRET') ?? '' },
+      body: JSON.stringify({ slug: opts.slug, entrypoint, verifyJwt: opts.verifyJwt ?? false, bundleOnly: !!opts.bundleOnly, files }),
+    })
+    const body = (await res.text().catch(() => '')).slice(0, 4000)
+    return { ok: res.ok, status: res.status, body }
+  } catch (err) {
+    return { ok: false, status: 0, body: err instanceof Error ? err.message : 'local deploy failed' }
+  }
+}
+async function localDelete(slug: string): Promise<DeployResult> {
+  const base = localDeployUrl()
+  if (!base) return { ok: false, status: 0, body: 'Local deployer not configured.' }
+  try {
+    const res = await fetch(`${base.replace(/\/$/, '')}/delete`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-forge-secret': Deno.env.get('FORGE_LOCAL_DEPLOY_SECRET') ?? '' },
+      body: JSON.stringify({ slug }),
+    })
+    const body = (await res.text().catch(() => '')).slice(0, 2000)
+    return { ok: res.ok || res.status === 404, status: res.status, body }
+  } catch (err) {
+    return { ok: false, status: 0, body: err instanceof Error ? err.message : 'local delete failed' }
+  }
+}
+// --- end self-hosted deploy backend --------------------------------------------
+
 // NOTE: secret names must NOT start with `SUPABASE_` — that prefix is reserved by
 // the platform for its own auto-injected secrets and cannot be set via
 // `supabase secrets set`. So the PAT lives under FORGE_PAT.
@@ -32,6 +84,7 @@ function projectRef(): string | undefined {
 }
 
 export function managementConfigured(): boolean {
+  if (deployMode() === 'local') return Boolean(localDeployUrl())
   return Boolean(pat() && projectRef())
 }
 
@@ -62,6 +115,7 @@ export interface DeployOptions {
 // Deploy (or, with bundleOnly, just validate) an edge function — single-file via
 // `source`, or multi-file via `files` + `entrypointPath`.
 export async function deployFunction(opts: DeployOptions): Promise<DeployResult> {
+  if (deployMode() === 'local') return localDeploy(opts)
   const ref = projectRef()
   const token = pat()
   if (!ref || !token) {
@@ -103,6 +157,7 @@ export async function deployFunction(opts: DeployOptions): Promise<DeployResult>
 
 // Remove a deployed function. Best-effort; returns ok=false with a message on error.
 export async function deleteFunction(slug: string): Promise<DeployResult> {
+  if (deployMode() === 'local') return localDelete(slug)
   const ref = projectRef()
   const token = pat()
   if (!ref || !token) {
