@@ -147,9 +147,11 @@ supabase db push                 # applies every file in supabase/migrations/ in
 #   (after this, you never run it by hand again — CI applies new migrations on
 #    merge to main; see "Database migrations" below)
 
-# 4. Deploy the AI edge function + its secret
+# 4. Deploy the edge functions + the one required secret
 supabase secrets set OPENROUTER_API_KEY=sk-or-...
-supabase functions deploy chat
+supabase functions deploy        # all of them — `chat` alone leaves most of the app dead
+#   (verify_jwt per function comes from supabase/config.toml, so the public
+#    token-gated ones stay verify_jwt = false)
 
 # 5. Run
 npm run dev                      # http://localhost:5173
@@ -336,8 +338,18 @@ rebuilt from scratch on Supabase and current models.
 
 1. Fork and clone.
 2. `npm install`, then follow **Quick start** to point at your own Supabase project.
-3. `npm run build` (typecheck + build) and `npm run lint` should pass.
-4. Open a PR with a clear description.
+3. These should all pass — CI (`.github/workflows/test.yml`) runs the same set on every PR:
+   ```bash
+   npm run lint
+   npm run build          # tsc -b typechecks the whole app, then vite build
+   npm test               # vitest — src/**/*.test.ts(x)
+   npm run test:deno      # deno test supabase/functions/tests/ (if you touched them)
+   ```
+   New logic wants a test: the repo deliberately keeps parsing/validation/calculation out
+   of components and handlers so it can be unit-tested as a module.
+4. Open a PR with a clear description. `main` is the deploy branch — land work through a
+   PR, don't push to it. Migrations need the **next free** number (`0111_…`); a duplicate
+   prefix aborts `supabase db push` for everyone (`src/lib/migrations.test.ts` guards it).
 
 ## License
 

@@ -46,6 +46,7 @@ Railway hostnames anywhere in `src/`. Railway-specific config lives only under
 | `STORAGE_BUCKET` | | `files` | bucket for inputs/outputs |
 | `WORKER_CAPABILITY` | | image default | must match the worker if set |
 | `WORKER_ID` | | derived | instance id for leases/heartbeats |
+| `PORT` / `HEALTH_PORT` | | `8080` | port the `/health` endpoint listens on (`PORT` wins) |
 | `POLL_INTERVAL_MS` | | `3000` | idle poll interval |
 | `JOB_LEASE_SECONDS` | | `120` | lease length; heartbeat is ~lease/3 |
 | `MAX_ATTEMPTS` | | `3` | default retry cap (jobs carry their own too) |
