@@ -95,7 +95,7 @@ JSON body:
 | `content` | yes | The artifact body. |
 | `type` | no | `markdown` (default) \| `code` \| `html` \| `text`. |
 | `language` | no | Hint for `code` artifacts (e.g. `ts`). |
-| `visibility` | no | `private` (default) \| `unlisted` \| `public`. Non‑private mints a `public_slug`. |
+| `visibility` | no | `private` (default) \| `workspace` \| `unlisted` \| `public`. Only `unlisted`/`public` mint a `public_slug` — `workspace` is internal to your team. |
 | `collection` | no | A collection **name or id** to file into — created if it doesn't exist. |
 | `collections` | no | An array of names/ids, same rules. |
 
@@ -118,6 +118,11 @@ one didn't exist.
 ### `DELETE /artifacts/:id`
 
 Returns `{ "deleted": true, "id": "…" }`, or `404` if not found.
+
+> This is a **permanent** row delete, not the archive the app's own delete
+> buttons perform (migration `0101` added a nullable `deleted_at`; the UI and the
+> `delete_artifact` builtin archive by default and the Trash panel restores).
+> There is no undo through this endpoint.
 
 ## Errors
 
@@ -158,8 +163,11 @@ curl -X DELETE "$BASE/<id>" -H "Authorization: Bearer $TOKEN"
   Collection tagging here is **additive** — to remove a tag, manage it in the
   app.
 - Setting `visibility` to `unlisted`/`public` returns a `public_slug`. For an
-  `html` artifact you also get a `share_url` — a clean standalone page served by
-  the public `p` function. For other types, build the in‑app link yourself:
+  `html` artifact you also get a `share_url` pointing at the public `p` function.
+  Note that Supabase rewrites `text/html` → `text/plain` on `*.supabase.co`
+  function URLs (anti-phishing), so that URL renders as source unless the project
+  has a custom functions domain — the app's own `https://<app-origin>/p/<public_slug>`
+  route is the one to hand out. For other types, build the in‑app link yourself:
   `https://<app-origin>/share/a/<public_slug>`.
 - This API is intentionally close to the MCP `create_artifact` /
   `add_to_collection` tools — same data model — but reachable with a plain
