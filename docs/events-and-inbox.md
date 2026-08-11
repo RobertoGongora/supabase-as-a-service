@@ -1,8 +1,8 @@
 # Events, listeners & the unified inbox
 
-Two connected features (migrations `0060_events.sql` + `0061_messages.sql`):
+Two connected features:
 
-- **Events + event listeners** — a workspace pub/sub automation substrate.
+- **Events + event listeners** — the workspace automation spine.
 - **Unified inbox** — one place for messages from any source (email, Slack,
   WhatsApp, generic pushes), which themselves emit events.
 
@@ -19,7 +19,12 @@ DEFINER DB triggers calling the `emit_event(...)` helper:
 | `link.created` | a link is saved |
 | `chat.created` | a conversation is started |
 | `message.received` | an inbox message arrives (any source) |
+| `memory.created` / `memory.updated` | a personal memory is saved or refined |
+| `whiteboard.*` / `card_board.*` | a planning board is created or changed |
+| `meeting.recorded` | meeting notes are saved |
+| `agent_job.*` | a capability-worker job changes state |
 | `collection.item_added` | any item is filed into a collection |
+| `table.‹your-table›` | a row is inserted into a table you opted in |
 
 Each event carries `entity_type`, `entity_id`, `actor_id`, a `data` jsonb
 (e.g. `{collection_id, item_type, item_id}` for `collection.item_added`,
@@ -52,26 +57,15 @@ action `run_agent` with that agent.
 Each dispatch is recorded in `event_listener_runs` (shown under the listener) and
 logged to `activity_log` as `listener.run` / `listener.error`.
 
-## Dispatcher cron (one-time setup)
+## The dispatcher
 
-The `event-dispatch` edge function does the matching + running. Like the
-`scheduler`, it is **not** auto-scheduled — after the function is deployed, wire
-pg_cron once against the live project (same convention as `0010_scheduled_agents.sql`):
+Matching and running happens on a cron tick, which is scheduled automatically
+when migrations are applied — there is nothing to wire up by hand. If the tick
+ever stops, events still accumulate and show in the feed; they just don't fire
+listeners, and the Listeners page shows admins a health banner.
 
-```sql
-select cron.schedule('dispatch-events', '* * * * *', $$
-  select net.http_post(
-    url := 'https://<project-ref>.supabase.co/functions/v1/event-dispatch',
-    headers := jsonb_build_object('Content-Type', 'application/json',
-                                  'x-cron-secret', (select secret from public.cron_config limit 1)),
-    body := '{}'::jsonb
-  );
-$$);
-```
-
-Until this runs, events still accumulate (and show in the feed) but listeners
-don't fire. Safety: each event is claimed once (`processed_at`), and each tick
-caps how many actions it runs, so chained automations stay bounded.
+Safety: each event is claimed exactly once, and every tick caps how many actions
+it runs, so chained automations stay bounded.
 
 ## Unified inbox
 
@@ -113,80 +107,51 @@ collection"*).
 ### IMAP email accounts ("Add an inbox")
 
 Instead of a provider push, you can **add an IMAP mailbox** that the workspace
-polls (migration `0102`). New mail lands in `inbox_messages` (`source='email'`)
-and fires `message.received` — so from the **Listeners** page you route it exactly
-like a webhook (e.g. *"drop each new email into the `logs` table"* via `run_tool:
-add_table_row`). You enter the mailbox's connection details once; the password is
-stored encrypted in Supabase Vault, never shown again.
+polls. New mail lands in the inbox and fires `message.received` — so from the
+**Listeners** page you route it exactly like a webhook (*"drop each new email
+into the `logs` table"*). You enter the mailbox's connection details once; the
+password is stored in Supabase Vault and never shown again.
 
 **Where:** Inbox → **Inboxes** (top-right) → **Add inbox** (`/inbox/accounts`).
 A mailbox is `private` (mail visible only to you) or `workspace` (shared with the
 team), mirroring links/todos. Provider presets fill host/port for you.
 
-**Test without waiting:** the editor has a **Test connection** button (the
-`imap-test` edge function, `verify_jwt=true`) that logs in and reports the folder's
-message count, so you can validate an app password before saving. Each saved inbox
-also has a **Test message** button that inserts a synthetic `source='email'` row —
-firing `message.received` — so you can wire and verify a Listener end-to-end without
-waiting for real mail. (A fresh inbox is also polled on the next 1-minute tick, not
-after its full interval, since it has no `last_checked_at` yet.)
+**Test without waiting.** *Test connection* logs in and reports the folder's
+message count, so you can validate an app password before saving. *Test message*
+drops a synthetic email into the inbox — firing the same event real mail does —
+so you can wire and verify a listener end-to-end without waiting for a delivery.
+A newly added mailbox is checked on the next tick rather than after a full
+interval.
 
-**Mark as read:** by default the poller marks each imported message `\Seen` on the
-IMAP server (`mark_seen`, 0103) so the mailbox reflects what's been pulled; untick
-"Mark messages read on the server after importing" in the editor to leave the folder
-untouched. **Re-scan:** the editor's **Re-scan** button resets the ingest cursor
-(`reset_email_account_cursor`) so the next poll re-imports the most recent mail —
-handy after a config change, or to pull the messages that were already in the box
+**Mark as read.** By default each imported message is marked read on the server,
+so the mailbox reflects what's been pulled. Untick that in the editor to leave the
+folder untouched. **Re-scan** resets the ingest cursor so the next poll re-imports
+recent mail — handy after a config change, or to pull what was already in the box
 when you connected.
 
-**Route new mail deterministically (0105):** the inbox editor has a **"When mail
-arrives here"** section mirroring the webhook's route options — **Save to a table**,
-**Run an agent**, or **Run a function** — while the message still lands in the
-Inbox. It's not a parallel engine: the editor manages **one per-inbox
-`event_listener`** (scoped by `match.account_id`), so routing runs through the same
-`event-dispatch` path as every other listener and shows up (editable) on the
-Listeners page. "Save to a table" is a **`run_tool → add_table_row`** action — **no
-model in the loop**, the same determinism as the webhook's direct-tool mode — so
-webhook, cron/scheduler, and inbox all share one deterministic spine into a user's
-`ut_*` table (the table is just an id in the rule's config; each tenant points at
-its own). Column mapping uses **dot-path tokens** (`{{event.data.subject}}`,
-`{{event.data.body}}`, …) resolved by `substituteEvent` — which is why 0105 also
-adds `body` (an 8k preview) and `received_at` to the `message.received` event.
-`email_accounts.routing_listener_id` links the inbox to its rule (re-populates the
-editor; `delete_email_account` cleans it up). Pick "Just add it to the Inbox" to
-detach.
+**Route new mail on arrival.** The inbox editor's *"When mail arrives here"*
+section mirrors the webhook's options — **save to a table**, **run an agent**, or
+**run a function** — while the message still lands in the inbox. It isn't a
+parallel engine: the editor manages one per-inbox listener, so routing runs
+through the same dispatcher as every other rule and stays editable on the
+Listeners page. "Save to a table" runs a single tool with **no model in the
+loop**, the same determinism as a webhook's direct-function mode, and columns are
+filled from the message with dot-path tokens like `{{event.data.subject}}`.
+Choose "Just add it to the Inbox" to detach.
 
-**Route one inbox, not all (0104):** every incoming message emits a single
-`message.received` event; to automate on just one mailbox, the event data carries
-`account_id` (the originating `email_accounts` id, stamped on `raw.account_id` by
-the poller and the Test-message button). A Listener's `match` can filter on it —
-the **Inbox** picker on the Listeners page (beside the existing **From source**
-filter) sets `match.account_id`, so "when mail arrives in *this* inbox → run_tool"
-targets exactly that mailbox. No inbox picked = every message, unchanged. This is a
-filter on the existing event (like `source`/`collection_id`), not a per-inbox event
-type — so there's no UUID in the event name and no duplicate events.
+**Route one mailbox, not all.** Every message emits the same event type, and the
+event carries which account it came from — so a listener can target exactly one
+mailbox using the **Inbox** picker beside the source filter. No inbox picked means
+every message, as before.
 
-*Note on dedupe (0103 fix):* the poller inserts each message with a plain `insert`
-and treats a `23505` unique violation on `(source, external_id)` as "already
-ingested". It does **not** use `upsert(..., {onConflict})`, because the unique index
-is **partial** (`where external_id is not null`) and Postgres can't infer a partial
-index for `ON CONFLICT` — the original upsert silently failed on every row while
-advancing the cursor, so nothing landed in the inbox. A real (non-duplicate) insert
-error now surfaces on the account's `last_error` and does not advance the cursor.
+**How often it runs.** Polling ticks every minute, but each mailbox is only
+checked as often as its own *Check every N minutes* setting. A fresh mailbox
+backfills only the most recent messages, duplicates are ignored, and a failure is
+shown on that mailbox's card without blocking the others.
 
-**How it runs:** the `email-poll` edge function is cron-ticked every minute (added
-to `_automation_cron_jobs()`, so every tenant self-schedules it — no manual step),
-but each mailbox is only checked at most once per its **Check every N minutes**
-setting. It opens IMAP over TLS (`Deno.connectTls`), fetches messages with a UID
-greater than the last one ingested (a fresh inbox backfills only the ~10 most
-recent), and dedupes on `Message-ID`. Any failure is recorded on the account's
-`last_error` and shown on the card (with an "error" badge); it never blocks other
-mailboxes. RFC822 parsing (headers, MIME text body, base64/quoted-printable) is the
-pure, unit-tested `supabase/functions/_shared/imap.ts` (`tests/imap_test.ts`).
-
-> If your Supabase project's egress blocks outbound port 993, the poll will report
-> a connect error — fall back to a provider inbound-parse (`email-inbound`) or a
-> push to `message-inbound`.
+> If your Supabase project's egress blocks outbound port 993, polling reports a
+> connect error — fall back to a provider inbound-parse or a push to
+> `message-inbound`.
 
 **Use an app password, not your real password.** Almost every mail provider now
 requires an *app-specific password* for IMAP once two-factor authentication (2FA)

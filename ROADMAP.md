@@ -4,100 +4,84 @@ Where this project is headed, and why.
 
 ## The thesis
 
-AI is becoming a metered utility. As usage grows (and as frontier-token prices make
-casual waste expensive), the systems that win are the ones that **squeeze the most value
-out of every token**: shared context so nothing gets explained twice, the right-sized
-model for each job, and clear visibility into what everything costs. A workspace that
-*accumulates* context gets cheaper per task over time — the opposite of pay-per-seat
-tools that start from zero every conversation.
+AI is becoming a metered utility. As usage grows, the systems that win are the
+ones that **squeeze the most value out of every token**: shared context so
+nothing gets explained twice, the right-sized model for each job, and clear
+visibility into what everything costs. A workspace that *accumulates* context
+gets cheaper per task over time — the opposite of pay-per-seat tools that start
+from zero every conversation.
 
-The development sequence is deliberate: **prove it works on the best model first, then
-drive the cost down and prove it keeps working.** Models run through OpenRouter, so any
-model (hosted or local, OpenAI-compatible) is one admin edit away.
-The roadmap below is largely about keeping the quality while shrinking the bill — and
-making the savings visible.
+The sequence is deliberate: **prove it works on the best model first, then drive
+the cost down and prove it keeps working.** Models run through OpenRouter, so any
+model — hosted or local — is one admin edit away.
 
-## Now: shared knowledge (specs written, in progress)
+## Landed
 
-The core promise — every piece of work makes the next one faster, *for the whole team* —
-needs two changes that are fully specified and ready to build:
+The foundations this roadmap was originally written to reach are in:
 
-- **Workspace-shared documents** ([spec](./docs/tasks/shared-knowledge.md)) — uploaded
-  PDFs join the team knowledge base by default, with a per-document "Only me" opt-out.
-  Today knowledge is siloed per uploader; this is the fix.
-- **Artifacts feed the knowledge base** ([spec](./docs/tasks/artifact-knowledge.md)) —
-  proposals and docs *made in the system* get indexed on create/edit, so last week's
-  proposal is context for this week's. Privacy follows the artifact's visibility:
-  Private artifacts compound only for their owner.
+- **Shared team knowledge** — uploaded PDFs join the workspace knowledge base by
+  default, with a per-document "Only me" opt-out, and retrieval fuses semantic
+  and keyword search so exact names and IDs are found alongside paraphrases.
+  Answers cite their source and say when the brain holds nothing.
+- **Model profiles** — features bind to named job slots (`orchestrator`,
+  `utility`), re-pointed in Settings without a code change.
+- **Cost visibility** — every model call records tokens and cost; the Usage page
+  breaks spend down by model, context and person beside the live balance.
+- **Guardrails** — a cheap pre-flight check whose verdict is enforced in code,
+  failing closed for anything arriving from outside.
+- **The automation spine** — events, listeners, schedules with real cron, agent
+  run traces, a unified inbox with routing, and Slack rooms bound to collections.
+- **Evals** — suites that grade answers *and* tool usage, comparable across
+  models, safe to re-run on a schedule.
+- **Measurement of the workspace itself** — a repeatable security posture scan
+  whose findings can be promoted straight onto the Features board.
 
-## Next: cost — see it, cap it, shrink it
+## Now: cost you can cap, not just watch
 
-The foundation is specced: **[Model Profiles](./docs/tasks/model-profiles.md)** — named
-job slots (`orchestrator`, `utility`) the workspace assigns models to, managed in
-Settings. Features bind to the slot, never to a model id, so swapping in a cheaper
-model is one admin edit, not a code change.
+1. **Budgets.** A soft monthly cap per workspace: warn admins as it approaches,
+   require a nod to go past it. No surprise bills.
+2. **Model routing.** Per-agent model choice, then automatic escalation — start
+   cheap, step up only when the task demands it. Unattended work shouldn't run on
+   the most expensive model by default.
+3. **Prompt caching.** Always-on prompts and tool definitions are identical on
+   every call; stop paying full price to resend them.
 
-1. **Token & cost tracking.** ✅ Shipped — every model call (chat, webhook,
-   scheduled agents, guardrails) writes a `usage_events` row with tokens + cost, and
-   the admin-only **/usage** page shows spend (totals, daily chart, by model / context
-   / user) plus the live OpenRouter account balance. "It cost us $11, here's the meter"
-   is now a screenshot. (Next: per-agent attribution for chat + MCP, and CSV export.)
-2. **Budgets.** A soft monthly cap per workspace: warn the admins as it approaches,
-   require an admin nod to blow past it. No surprise bills.
-3. **Model routing.** Opus stays as the orchestrator for interactive, high-stakes work;
-   routine and unattended tasks (webhook processing, scheduled runs, classification,
-   summarization) route to cheaper models like Haiku. Per-agent model selection, then
-   automatic escalation: start cheap, step up only when the task demands it.
-4. **Prompt caching.** Always-on prompts and tool definitions are identical on every
-   call — cache them and stop paying full price to resend them.
-5. **Provider abstraction.** ✅ Done — all model calls go through **OpenRouter**
-   (OpenAI-compatible), so a workspace can point any profile at any model (hosted or
-   local) from Settings → Models. Per-profile model ids are OpenRouter slugs.
+## Next: finish the proposal workflow
 
-## Next: guardrails
+The pieces exist — grounded drafting, artifacts, share links with passwords.
+What turns them into a workflow a business runs on:
 
-Webhooks accept input from the outside world by design, and agents can hold tools —
-that combination needs a checkpoint. The plan
-([spec](./docs/tasks/guardrails.md)) is a **Guardrails** section of the app
-(admin-managed, alongside Tools and Prompts):
+- **Artifact versions** — snapshot on share, so editing a proposal after sending
+  it never silently changes what the client sees.
+- **View tracking** — "your client opened the proposal", in the live feed.
+- **A nicer share page** — light branding and an accept/sign-off action.
+- **Keep shared pages out of search engines** — an unlisted link should stay
+  link-only even if it reaches a crawler.
 
-- A guardrail is a **separate pre-flight check by a cheap model** (e.g. Haiku), run
-  *before* the main model sees the request: does this webhook payload try to redirect
-  the agent? Does this message contain secrets or PII? Its verdict is returned as data
-  and **enforced in code** — block the run, strip the content, or proceed with tools
-  disabled — never merely pasted into the prompt as advice.
-- This is intentionally *not* the always-on prompts mechanism. Always-on prompts shape
-  behavior from inside the same model call, which means injected payload text can argue
-  with them. A guardrail sits outside the call: no tools, no conversation, output
-  parsed, decision logged to the activity feed.
-- Shipping with one deterministic rule alongside the model check, because an LLM
-  guardrail is a mitigation, not a boundary: **unattended runs (webhooks, schedules)
-  get read-only tools unless explicitly opted in per webhook.**
+## Next: context that compounds
 
-This doubles as cost infrastructure: the same cheap-model pre-flight that screens a
-payload can also classify it for routing (see model routing above).
-
-## Next: the proposal workflow, finished
-
-The pieces exist — knowledge-grounded drafting, artifacts, unlisted share links. What
-turns them from features into a workflow a business runs on:
-
-- **Artifact versions** — snapshot on share, so editing a proposal after sending it
-  never silently changes what the client sees.
-- **View tracking** — "your client opened the proposal" in the live activity feed
-  (the realtime plumbing already exists).
-- **A nicer share page** — light branding, and an accept/sign-off action.
+- **Artifacts feed the knowledge base** — work made *in* the system gets indexed
+  on create and edit, so last week's proposal is context for this week's, with
+  privacy following the artifact's own visibility.
+- **Retrieval for collections** — search a collection instead of injecting it
+  whole, so a large collection stops competing with the conversation for room.
+- **Scanned-PDF ingestion** — vision extraction for documents with no text layer.
 
 ## Later
 
-- **One-command install.** Keep grinding installation friction down — including a
-  skill/MCP flow where Claude Desktop performs the Supabase setup itself, so "deploy
-  your own" stops requiring a terminal.
-- **Workspace export.** One button: conversations, artifacts, and files as a portable
-  archive. "You own your data" should be demonstrable, not aspirational.
-- **Scanned-PDF ingestion** (vision extraction — Stage 2 of the knowledge pipeline).
-- **Richer team spaces** — roles beyond admin/member, comments, shared collections.
+- **One-command install and a hosted option** — the same provisioning engine
+  behind both, so "deploy your own" stops requiring a terminal.
+- **Workspace export.** One button: conversations, artifacts and files as a
+  portable archive. "You own your data" should be demonstrable.
+- **Richer team spaces** — roles beyond admin and member, comments, per-space
+  sharing.
+- **More capability workers** — PDF/OCR, browser, image — on the existing job
+  protocol.
+- **Agent-to-agent collaboration** — agents that talk to each other, not only to
+  people, with the workspace as the place they discover one another.
 
 ---
 
-Have an opinion on the ordering, or want one of these badly? Open an issue.
+Have an opinion on the ordering, or want one of these badly? Open an issue — or
+file it on the in-app Features board, where an approved card becomes a branch and
+a PR.

@@ -119,6 +119,12 @@ one didn't exist.
 
 Returns `{ "deleted": true, "id": "…" }`, or `404` if not found.
 
+**This removes the artifact for good.** It is not the app's Delete button, which
+archives instead and leaves the row recoverable from the Trash panel. Archiving
+and restoring are available to the assistant and over MCP; this endpoint is the
+permanent one. Artifacts already archived in the app are hidden from `GET`
+listings here.
+
 ## Errors
 
 Errors are JSON: `{ "error": "message" }` with an appropriate status
