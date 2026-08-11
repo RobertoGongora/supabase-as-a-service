@@ -144,7 +144,7 @@ async function issueBody(db: DB, feature: { description: string; screenshots: st
   if (shots.length) parts.push('## Screenshots', shots.join('\n\n'))
   parts.push(
     '---',
-    '_Filed from the Features board. Implement this in the repository, run `npm run build` to verify, and open a PR whose description contains `Closes #<this issue>`. Do not push to main._',
+    '_Filed from the Features board._',
     `<!-- feature:${feature.id} -->`,
   )
   return parts.join('\n\n')
