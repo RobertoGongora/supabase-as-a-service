@@ -1,6 +1,6 @@
 # Events, listeners & the unified inbox
 
-Two connected features (migrations `0060_events.sql` + `0061_messages.sql`):
+Two connected features (migrations `0063_events.sql` + `0064_messages.sql`):
 
 - **Events + event listeners** — a workspace pub/sub automation substrate.
 - **Unified inbox** — one place for messages from any source (email, Slack,
@@ -52,26 +52,17 @@ action `run_agent` with that agent.
 Each dispatch is recorded in `event_listener_runs` (shown under the listener) and
 logged to `activity_log` as `listener.run` / `listener.error`.
 
-## Dispatcher cron (one-time setup)
+## The dispatcher tick
 
-The `event-dispatch` edge function does the matching + running. Like the
-`scheduler`, it is **not** auto-scheduled — after the function is deployed, wire
-pg_cron once against the live project (same convention as `0010_scheduled_agents.sql`):
+The `event-dispatch` edge function does the matching and running, on a
+once-a-minute schedule. Since migration `0094` every workspace schedules its own
+background jobs — the dispatcher, the agent scheduler, the mail poller and the
+document indexer — as part of applying migrations, so there is no manual setup
+step. The Listeners page shows a health banner to an admin if those jobs aren't
+scheduled.
 
-```sql
-select cron.schedule('dispatch-events', '* * * * *', $$
-  select net.http_post(
-    url := 'https://<project-ref>.supabase.co/functions/v1/event-dispatch',
-    headers := jsonb_build_object('Content-Type', 'application/json',
-                                  'x-cron-secret', (select secret from public.cron_config limit 1)),
-    body := '{}'::jsonb
-  );
-$$);
-```
-
-Until this runs, events still accumulate (and show in the feed) but listeners
-don't fire. Safety: each event is claimed once (`processed_at`), and each tick
-caps how many actions it runs, so chained automations stay bounded.
+Safety: each event is claimed exactly once, and each tick caps how many actions
+it runs, so chained automations stay bounded.
 
 ## Unified inbox
 

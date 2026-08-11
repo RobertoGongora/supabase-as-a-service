@@ -95,7 +95,7 @@ JSON body:
 | `content` | yes | The artifact body. |
 | `type` | no | `markdown` (default) \| `code` \| `html` \| `text`. |
 | `language` | no | Hint for `code` artifacts (e.g. `ts`). |
-| `visibility` | no | `private` (default) \| `unlisted` \| `public`. Non‑private mints a `public_slug`. |
+| `visibility` | no | `private` (default) \| `workspace` \| `unlisted` \| `public`. `unlisted` and `public` mint a `public_slug`. |
 | `collection` | no | A collection **name or id** to file into — created if it doesn't exist. |
 | `collections` | no | An array of names/ids, same rules. |
 
@@ -118,6 +118,9 @@ one didn't exist.
 ### `DELETE /artifacts/:id`
 
 Returns `{ "deleted": true, "id": "…" }`, or `404` if not found.
+
+> This removes the artifact **permanently**. Deleting in the app archives instead,
+> so the owner can restore it from Trash; there is no undo for this endpoint.
 
 ## Errors
 
@@ -161,6 +164,8 @@ curl -X DELETE "$BASE/<id>" -H "Authorization: Bearer $TOKEN"
   `html` artifact you also get a `share_url` — a clean standalone page served by
   the public `p` function. For other types, build the in‑app link yourself:
   `https://<app-origin>/share/a/<public_slug>`.
+- Artifacts archived in the app are hidden from this API's list and read
+  endpoints. Restore one in the app's Trash panel to bring it back.
 - This API is intentionally close to the MCP `create_artifact` /
   `add_to_collection` tools — same data model — but reachable with a plain
   `curl`, so non‑Claude systems can push and sync content too.
