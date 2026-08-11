@@ -44,6 +44,7 @@ import ApiPage from './pages/ApiPage'
 import UsagePage from './pages/UsagePage'
 import FeedbackPage from './pages/FeedbackPage'
 import FeaturesPage from './pages/FeaturesPage'
+import CodePage from './pages/CodePage'
 import ProfileSettings from './pages/settings/ProfileSettings'
 import ConnectClaudeSettings from './pages/settings/ConnectClaudeSettings'
 import ModelsSettings from './pages/settings/ModelsSettings'
@@ -133,6 +134,7 @@ export default function App() {
         <Route path="usage" element={<UsagePage />} />
         <Route path="feedback" element={<FeedbackPage />} />
         <Route path="features" element={<FeaturesPage />} />
+        <Route path="code" element={<CodePage />} />
         <Route path="files" element={<FilesPage />} />
         <Route path="settings" element={<Navigate to="/settings/profile" replace />} />
         <Route path="settings/profile" element={<ProfileSettings />} />

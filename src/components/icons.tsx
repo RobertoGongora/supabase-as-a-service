@@ -311,6 +311,13 @@ export const SparkleIcon = (p: SVGProps<SVGSVGElement>) => (
   </svg>
 )
 
+export const CodeIcon = (p: SVGProps<SVGSVGElement>) => (
+  <svg {...base(p)}>
+    <polyline points="16 18 22 12 16 6" />
+    <polyline points="8 6 2 12 8 18" />
+  </svg>
+)
+
 export const ForgeIcon = (p: SVGProps<SVGSVGElement>) => (
   <svg {...base(p)}>
     <path d="M13 2 4 14h7l-1 8 9-12h-7z" />

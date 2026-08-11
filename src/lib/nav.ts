@@ -49,6 +49,7 @@ import {
   UsersIcon,
   WebhookIcon,
   WhiteboardIcon,
+  CodeIcon,
   type IconProps,
 } from '../components/icons'
 
@@ -134,6 +135,7 @@ export const navGroups: NavGroup[] = [
       { to: '/usage', label: 'Usage', key: 'usage', icon: UsageIcon, adminOnly: true, keywords: 'cost spend tokens' },
       { to: '/feedback', label: 'Feedback', key: 'feedback', icon: FeedbackIcon, adminOnly: true },
       { to: '/features', label: 'Features', key: 'features', icon: SparkleIcon, keywords: 'roadmap board' },
+      { to: '/code', label: 'Code', key: 'code', icon: CodeIcon, keywords: 'terminal ide t3 sessions editor coding' },
     ],
   },
   {
