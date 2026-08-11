@@ -51,15 +51,13 @@ agent scoping, the `webhooks.allow_tools` lock, guardrails).
 
 ## How it works
 
-- The `_shared/mcp.ts` client discovers each connected server's toolset and namespaces every
-  remote tool as `‹label›__‹remote›` (capped at 64 chars — `mcpPrefix` / `namespacedToolName`,
-  both pure and unit-tested in `supabase/functions/tests/mcp_test.ts`).
-- The `mcp` edge function (the server your desktop AI connects to) appends those discovered
-  tools to its own `tools/list`, and in `tools/call` routes any namespaced name it doesn't
-  implement itself to `runMcpTool`, which executes the call against the right server using
-  that server's Vault token.
-- Because the two paths share the same discovery + namespacing helpers, the tool names the
-  desktop sees are exactly the ones the router can execute.
+- The workspace discovers each connected server's toolset and gives every remote tool a
+  namespaced name (`‹label›__‹remote-tool›`), so two servers can offer similarly-named tools
+  without colliding.
+- The workspace's own MCP endpoint lists those tools alongside its built-in ones, and routes
+  any namespaced call back out to the right server using that server's Vault-stored token.
+- Discovery and naming are shared by both directions, so the tool names your desktop sees are
+  exactly the ones the workspace can execute.
 
 The remote tools are exfiltration-capable (a browser can reach anything), so they carry the
 same workspace-wide trust as `send_email`; connecting servers stays admin-only.
