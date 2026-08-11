@@ -5,7 +5,7 @@ import { standalonePageUrl, supabase } from '../lib/supabase'
 import { useAuth } from '../contexts/AuthContext'
 import { imageMarkdown, insertAtCursor, isImageFile, isUrl, sanitizeImageName, urlToMarkdown } from '../lib/artifactImages'
 import { uploadPickedFile } from '../lib/upload'
-import { makeSlug } from '../lib/util'
+import { makeSlug, randomId } from '../lib/util'
 import { ArtifactFrame } from '../components/ArtifactFrame'
 import { Markdown } from '../components/Markdown'
 import { ResizeHandle, usePanelResize } from '../components/ResizeHandle'
@@ -84,7 +84,7 @@ export default function ArtifactEditorPage() {
         const urls: string[] = []
         for (const file of images) {
           const name = sanitizeImageName(file.name, file.type)
-          const path = `${user.id}/${crypto.randomUUID()}/${name}`
+          const path = `${user.id}/${randomId()}/${name}`
           await uploadPickedFile(path, file, IMAGE_BUCKET, { artifact_id: artifact.id })
           const { data, error } = await supabase.storage
             .from(IMAGE_BUCKET)

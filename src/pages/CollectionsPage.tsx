@@ -8,7 +8,7 @@ import { uploadPickedFile } from '../lib/upload'
 import { fetchLinkMeta, normalizeUrl } from '../lib/links'
 import { useAuth } from '../contexts/AuthContext'
 import { Markdown } from '../components/Markdown'
-import { formatBytes, formatDate } from '../lib/util'
+import { formatBytes, formatDate, randomId } from '../lib/util'
 import { estimateTokensFromChars } from '../lib/tokens'
 import { useOrchestratorContext } from '../lib/useModelContext'
 import { ContextMeter } from '../components/ContextMeter'
@@ -459,7 +459,7 @@ function CollectionDashboard({
   async function uploadFiles(files: FileList) {
     if (!user) return
     for (const file of Array.from(files)) {
-      const path = `${user.id}/${crypto.randomUUID()}/${file.name}`
+      const path = `${user.id}/${randomId()}/${file.name}`
       const size = await uploadPickedFile(path, file)
       const { data } = await supabase
         .from('files')

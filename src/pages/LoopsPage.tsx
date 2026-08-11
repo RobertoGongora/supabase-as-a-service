@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { Database } from '../lib/database.types'
 import { supabase } from '../lib/supabase'
+import { copyText } from '../lib/clipboard'
 import { useAuth } from '../contexts/AuthContext'
 import { formatDate } from '../lib/util'
 import { CopyIcon, LoopIcon, PlayIcon, PlusIcon, TrashIcon } from '../components/icons'
@@ -592,7 +593,7 @@ function RunView({ loop, autoStart = false, onClose }: { loop: Loop; autoStart?:
               <div className="mb-1 flex items-center justify-between">
                 <span className="text-xs font-medium text-muted">Best result {run.best_score != null ? `(${run.best_score}/100)` : ''}</span>
                 <button
-                  onClick={() => navigator.clipboard.writeText(run.best_output ?? '')}
+                  onClick={() => copyText(run.best_output ?? '')}
                   className="flex items-center gap-1 text-[11px] text-muted hover:text-text"
                 >
                   <CopyIcon className="h-3.5 w-3.5" /> Copy

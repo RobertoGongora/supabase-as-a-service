@@ -3,6 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom'
 import type { Database } from '../lib/database.types'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../contexts/AuthContext'
+import { randomId } from '../lib/util'
 import { ChatIcon, ChevronLeftIcon, CloseIcon, PlusIcon, TrashIcon, UsersIcon } from '../components/icons'
 import { BoardChatPanel } from '../components/BoardChatPanel'
 
@@ -34,7 +35,7 @@ function cardsOf(board: CardBoard | null): Card[] {
     .map((c) => {
       const o = c as Record<string, unknown>
       return {
-        id: String(o.id ?? crypto.randomUUID()),
+        id: String(o.id ?? randomId()),
         text: typeof o.text === 'string' ? o.text : '',
         color: normColor(String(o.color ?? 'yellow')),
         x: Number.isFinite(Number(o.x)) ? Number(o.x) : 40,
@@ -54,16 +55,27 @@ export default function CardBoardEditorPage() {
   const [board, setBoard] = useState<CardBoard | null>(null)
   const [notFound, setNotFound] = useState(false)
   const [cards, setCards] = useState<Card[]>([])
-  const [saveState, setSaveState] = useState<'idle' | 'saving' | 'saved'>('idle')
+  const [saveState, setSaveState] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle')
   const [peers, setPeers] = useState(0)
   const [editingId, setEditingId] = useState<string | null>(null)
   const [colorMenu, setColorMenu] = useState<string | null>(null)
   const [chatOpen, setChatOpen] = useState(false)
 
+  // Two refs, deliberately: `scrollRef` is the viewport that scrolls, `canvasRef`
+  // the fixed CANVAS_W × CANVAS_H surface inside it. Anything about what the
+  // user can currently SEE (where a new card should land) must measure the
+  // scroller — the canvas's own scrollLeft is always 0 and its clientWidth is
+  // the full 2600px, which would drop new cards off-screen.
+  const scrollRef = useRef<HTMLDivElement>(null)
   const canvasRef = useRef<HTMLDivElement>(null)
   const cardsRef = useRef<Card[]>([])
   const channelRef = useRef<ReturnType<typeof supabase.channel> | null>(null)
   const lastSigRef = useRef<string>('')
+  // True from the moment we mutate locally until that exact state is safely in
+  // the DB. While dirty we ignore inbound rows: the echo of our own earlier
+  // save arrives AFTER we've typed more, and applying it would rewind the
+  // textarea the user is still writing in.
+  const dirtyRef = useRef(false)
   const draggingRef = useRef(false)
   const dragRef = useRef<{ id: string; dx: number; dy: number } | null>(null)
   const saveTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
@@ -100,8 +112,12 @@ export default function CardBoardEditorPage() {
       clearTimeout(saveTimer.current)
       setSaveState('saving')
       saveTimer.current = setTimeout(async () => {
+        const sig = cardsSig(next)
         const { error } = await supabase.from('card_boards').update({ cards: next }).eq('id', boardId)
-        setSaveState(error ? 'idle' : 'saved')
+        // Only clear the dirty flag if nothing was typed while the write was in
+        // flight — otherwise the newer local state is still unsaved.
+        if (!error && cardsSig(cardsRef.current) === sig) dirtyRef.current = false
+        setSaveState(error ? 'error' : 'saved')
       }, 700)
     },
     [boardId],
@@ -123,6 +139,7 @@ export default function CardBoardEditorPage() {
       cardsRef.current = next
       setCards(next)
       lastSigRef.current = cardsSig(next)
+      dirtyRef.current = true
       scheduleBroadcast(next)
       scheduleSave(next)
     },
@@ -135,7 +152,12 @@ export default function CardBoardEditorPage() {
     cardsRef.current = next
     setCards(next)
     lastSigRef.current = cardsSig(next)
+    dirtyRef.current = false
   }, [])
+
+  // A remote payload may only overwrite local state when we have nothing
+  // unsaved and aren't mid-drag.
+  const canApplyRemote = () => !draggingRef.current && !dirtyRef.current
 
   // Live channel: broadcast card changes + presence + DB fallback.
   useEffect(() => {
@@ -147,7 +169,7 @@ export default function CardBoardEditorPage() {
     channel
       .on('broadcast', { event: 'cards' }, ({ payload }) => {
         if (!payload || payload.from === myId) return
-        if (!draggingRef.current) applyRemote(cardsOf({ cards: payload.cards } as CardBoard))
+        if (canApplyRemote()) applyRemote(cardsOf({ cards: payload.cards } as CardBoard))
       })
       .on('presence', { event: 'sync' }, () => {
         const state = channel.presenceState() as Record<string, unknown[]>
@@ -160,7 +182,7 @@ export default function CardBoardEditorPage() {
           const r = row as CardBoard
           setBoard((b) => (b ? { ...b, title: r.title, visibility: r.visibility } : b))
           const next = cardsOf(r)
-          if (!draggingRef.current && cardsSig(next) !== lastSigRef.current) applyRemote(next)
+          if (canApplyRemote() && cardsSig(next) !== lastSigRef.current) applyRemote(next)
         },
       )
       .subscribe((status) => {
@@ -176,7 +198,7 @@ export default function CardBoardEditorPage() {
   // --- Card mutations -------------------------------------------------------
   const addCardAt = useCallback(
     (x: number, y: number) => {
-      const id = crypto.randomUUID()
+      const id = randomId()
       const card: Card = { id, text: '', color: 'yellow', x: Math.max(0, x), y: Math.max(0, y) }
       pushLocal([...cardsRef.current, card])
       setEditingId(id)
@@ -284,7 +306,8 @@ export default function CardBoardEditorPage() {
         />
         <button
           onClick={() => {
-            const el = canvasRef.current
+            // Drop it in the middle of what's on screen right now.
+            const el = scrollRef.current
             const sx = el ? el.scrollLeft + el.clientWidth / 2 - CARD_W / 2 : 60
             const sy = el ? el.scrollTop + 80 : 60
             addCardAt(sx, sy)
@@ -310,8 +333,16 @@ export default function CardBoardEditorPage() {
             <UsersIcon className="h-3.5 w-3.5" /> {peers}
           </span>
         )}
-        <span className="w-12 text-xs text-faint">
-          {saveState === 'saving' ? 'Saving…' : saveState === 'saved' ? 'Saved' : ''}
+        <span
+          className={`whitespace-nowrap text-xs ${saveState === 'error' ? 'font-medium text-amber-600' : 'text-faint'}`}
+        >
+          {saveState === 'saving'
+            ? 'Saving…'
+            : saveState === 'saved'
+              ? 'Saved'
+              : saveState === 'error'
+                ? 'Not saved'
+                : ''}
         </span>
         <select
           value={board.visibility}
@@ -329,8 +360,16 @@ export default function CardBoardEditorPage() {
 
       {/* Canvas + optional chat panel */}
       <div className="relative flex min-h-0 flex-1">
-      {/* Canvas — scrollable; double-click empty space to add a card */}
-      <div className="min-h-0 flex-1 overflow-auto bg-surface-2">
+        {/* Canvas area — the empty-board hint is a sibling OVERLAY of the
+            scroller, not a child of the CANVAS_W-wide surface: inside that,
+            "centered" means centered on the 2600px canvas (x≈1300), which is
+            off-screen. */}
+        {/* `min-w-0` matters: this wrapper has visible overflow, so without it
+            its flex min-width resolves to the content's min-content size — the
+            full CANVAS_W — and the overlay below would be 2600px wide again. */}
+        <div className="relative min-h-0 min-w-0 flex-1">
+          {/* Canvas — scrollable; double-click empty space to add a card */}
+          <div ref={scrollRef} className="h-full overflow-auto bg-surface-2">
         <div
           ref={canvasRef}
           onDoubleClick={onCanvasDoubleClick}
@@ -338,11 +377,6 @@ export default function CardBoardEditorPage() {
           style={{ width: CANVAS_W, height: CANVAS_H, ...dotBg }}
           className="relative"
         >
-          {cards.length === 0 && (
-            <div className="pointer-events-none absolute left-1/2 top-24 -translate-x-1/2 text-center text-sm text-faint">
-              Double-click anywhere to add a card. Drag the top bar to move it; arrange top-to-bottom by priority.
-            </div>
-          )}
           {cards.map((c) => {
             const col = COLORS[c.color] ?? COLORS.yellow
             return (
@@ -415,7 +449,14 @@ export default function CardBoardEditorPage() {
             )
           })}
         </div>
-      </div>
+          </div>
+          {cards.length === 0 && (
+            <div className="pointer-events-none absolute inset-x-0 top-24 px-6 text-center text-sm text-faint">
+              Double-click anywhere to add a card. Drag the top bar to move it; arrange top-to-bottom by
+              priority.
+            </div>
+          )}
+        </div>
         {chatOpen && boardId && (
           <div className="absolute inset-0 z-30 md:static md:z-auto md:w-96 md:shrink-0">
             <BoardChatPanel boardId={boardId} boardTitle={board.title} onClose={() => setChatOpen(false)} />

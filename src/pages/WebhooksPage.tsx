@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useState } from 'react'
 import type { Database, WebhookEventStatus, UserTableColumn } from '../lib/database.types'
 import { supabase, webhookUrl } from '../lib/supabase'
+import { copyText } from '../lib/clipboard'
 import { useAuth } from '../contexts/AuthContext'
-import { formatDate } from '../lib/util'
+import { formatDate, randomId } from '../lib/util'
 import { ArrowRightIcon, CopyIcon, PlusIcon, TrashIcon, WebhookIcon } from '../components/icons'
 
 type Webhook = Database['public']['Tables']['webhooks']['Row']
@@ -278,7 +279,7 @@ function WebhookDetail({
   }
 
   async function copy() {
-    await navigator.clipboard.writeText(url)
+    await copyText(url)
     setCopied(true)
     setTimeout(() => setCopied(false), 1500)
   }
@@ -340,7 +341,7 @@ function WebhookDetail({
           </span>
           <div className="flex gap-2">
             <button
-              onClick={() => setSecret(crypto.randomUUID().replace(/-/g, ''))}
+              onClick={() => setSecret(randomId().replace(/-/g, ''))}
               className="rounded-lg border border-border-strong px-2.5 py-1 text-xs font-medium text-muted hover:bg-surface-hover"
             >
               Generate

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import type { Database } from '../../lib/database.types'
 import { mcpUrl, supabase } from '../../lib/supabase'
+import { copyText } from '../../lib/clipboard'
 import { useAuth } from '../../contexts/AuthContext'
 import { formatDate } from '../../lib/util'
 import { CopyIcon, PlusIcon, TrashIcon } from '../../components/icons'
@@ -41,7 +42,7 @@ export function ConnectClaude() {
   }
 
   async function copy(text: string, key: string) {
-    await navigator.clipboard.writeText(text)
+    await copyText(text)
     setCopied(key)
     setTimeout(() => setCopied(null), 1500)
   }

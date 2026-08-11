@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import type { Database } from '../lib/database.types'
 import { artifactsApiUrl, todosApiUrl, runToolUrl, supabase } from '../lib/supabase'
+import { copyText } from '../lib/clipboard'
 import { useAuth } from '../contexts/AuthContext'
 import { formatDate } from '../lib/util'
 import { CheckIcon, CopyIcon, PlusIcon } from '../components/icons'
@@ -57,7 +58,7 @@ export default function ApiPage() {
 function CodeBlock({ code, label }: { code: string; label?: string }) {
   const [copied, setCopied] = useState(false)
   async function copy() {
-    await navigator.clipboard.writeText(code)
+    await copyText(code)
     setCopied(true)
     setTimeout(() => setCopied(false), 1500)
   }

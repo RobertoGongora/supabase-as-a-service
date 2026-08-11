@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useAuth } from '../contexts/AuthContext'
 import { supabase, transcribeFunctionUrl } from '../lib/supabase'
-import { formatDate } from '../lib/util'
+import { formatDate, randomId } from '../lib/util'
 import { ChatIcon, MicIcon, SaveIcon, SparkleIcon, StopIcon, TrashIcon } from '../components/icons'
 import { MeetingChatPanel } from '../components/MeetingChatPanel'
 import { streamChat } from '../lib/chat'
@@ -32,7 +32,7 @@ export default function MeetingNotesPage() {
   // Stable id for THIS meeting session — correlates the live chat thread
   // (conversations.meeting_id) with the artifact saved at the end. A fresh id
   // starts a fresh meeting (regenerated after save / clear).
-  const [meetingId, setMeetingId] = useState<string>(() => crypto.randomUUID())
+  const [meetingId, setMeetingId] = useState<string>(() => randomId())
   // The meeting's context prompt: what to do with the transcript when it ends
   // (free text, optionally prefilled from a saved skill). Auto-runs on stop.
   const [meetingPrompt, setMeetingPrompt] = useState('')
@@ -285,7 +285,7 @@ export default function MeetingNotesPage() {
       setMeetingTitle('')
       setMeetingPrompt('')
       setStatus('Ready to record')
-      setMeetingId(crypto.randomUUID()) // fresh meeting → fresh chat thread
+      setMeetingId(randomId()) // fresh meeting → fresh chat thread
       setChatOpen(false)
       setAutoRun(undefined)
       setIdeas([])
@@ -453,7 +453,7 @@ export default function MeetingNotesPage() {
     const instruction = meetingPromptRef.current.trim()
     if (!instruction || !transcribedRef.current) return
     setChatOpen(true)
-    setAutoRun({ id: crypto.randomUUID(), instruction })
+    setAutoRun({ id: randomId(), instruction })
   }, [])
   useEffect(() => { triggerAutoRunRef.current = triggerAutoRun }, [triggerAutoRun])
 
