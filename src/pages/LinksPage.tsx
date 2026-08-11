@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { Database } from '../lib/database.types'
 import { supabase } from '../lib/supabase'
+import { copyText } from '../lib/clipboard'
 import { useAuth } from '../contexts/AuthContext'
 import { buildLinkEditPatch, fetchLinkMeta, matchesLinkQuery, normalizeUrl } from '../lib/links'
 import { AddToCollectionBar } from '../components/AddToCollectionBar'
@@ -469,7 +470,7 @@ function LinkCard({
 
   async function copyUrl() {
     try {
-      await navigator.clipboard.writeText(link.url)
+      await copyText(link.url)
       setCopied(true)
       setTimeout(() => setCopied(false), 1500)
     } catch {

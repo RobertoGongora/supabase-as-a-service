@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import type { Visibility } from '../lib/database.types'
 import { validateSharePassword } from '../lib/artifactShare'
+import { copyText } from '../lib/clipboard'
 import { GlobeIcon, LinkIcon, LockIcon, UsersIcon, EyeIcon, EyeOffIcon } from './icons'
 
 const OPTIONS: { value: Visibility; label: string; hint: string; Icon: typeof LockIcon }[] = [
@@ -61,7 +62,7 @@ export function VisibilityControl({
           />
           <button
             onClick={async () => {
-              await navigator.clipboard.writeText(shareUrl)
+              await copyText(shareUrl)
               setCopied(true)
               setTimeout(() => setCopied(false), 1500)
             }}

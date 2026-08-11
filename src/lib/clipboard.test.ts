@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { copyText } from './CopyButton'
+import { copyText } from './clipboard'
 
 afterEach(() => {
   vi.restoreAllMocks()

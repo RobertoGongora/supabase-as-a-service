@@ -1,5 +1,5 @@
-import { describe, expect, it } from 'vitest'
-import { MAX_CHAT_TITLE, formatBytes, makeSlug, normalizeChatTitle, skillInvocationSentence } from './util'
+import { afterEach, describe, expect, it } from 'vitest'
+import { MAX_CHAT_TITLE, formatBytes, makeSlug, normalizeChatTitle, randomId, skillInvocationSentence } from './util'
 import { estimateTokens, estimateTokensFromChars, formatCount } from './tokens'
 
 describe('makeSlug', () => {
@@ -10,6 +10,26 @@ describe('makeSlug', () => {
 
   it('is (overwhelmingly) unique per call', () => {
     expect(makeSlug()).not.toBe(makeSlug())
+  })
+})
+
+describe('randomId', () => {
+  const native = crypto.randomUUID
+  afterEach(() => {
+    Object.defineProperty(crypto, 'randomUUID', { value: native, configurable: true, writable: true })
+  })
+
+  it('returns a well-formed v4 UUID', () => {
+    expect(randomId()).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/)
+  })
+
+  // The whole point of the helper: on a plain-HTTP origin (a self-hosted
+  // tailnet/LAN install) `crypto.randomUUID` is undefined, and calling it
+  // throws. The fallback must still produce a valid id.
+  it('falls back when crypto.randomUUID is unavailable (non-secure origin)', () => {
+    Object.defineProperty(crypto, 'randomUUID', { value: undefined, configurable: true, writable: true })
+    expect(randomId()).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/)
+    expect(randomId()).not.toBe(randomId())
   })
 })
 

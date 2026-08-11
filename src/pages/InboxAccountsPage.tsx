@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom'
 import type { Database } from '../lib/database.types'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../contexts/AuthContext'
-import { formatDate } from '../lib/util'
+import { formatDate, randomId } from '../lib/util'
 import { BoltIcon, InboxIcon, MailIcon, PlusIcon, TrashIcon } from '../components/icons'
 
 type Account = Database['public']['Tables']['email_accounts']['Row']
@@ -32,7 +32,7 @@ export default function InboxAccountsPage() {
     const { error } = await supabase.from('inbox_messages').insert({
       owner_id: user?.id ?? a.owner_id,
       source: 'email',
-      external_id: `mock:${crypto.randomUUID()}`,
+      external_id: `mock:${randomId()}`,
       from_address: a.username,
       from_name: 'IMAP Test',
       to_address: a.username,

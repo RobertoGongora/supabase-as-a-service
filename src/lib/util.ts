@@ -6,6 +6,27 @@ export function makeSlug(len = 10): string {
   return Array.from(bytes, (b) => alphabet[b % alphabet.length]).join('')
 }
 
+/**
+ * A random UUID — safe to call from a NON-secure origin.
+ *
+ * `crypto.randomUUID()` is a secure-context-only API: on a self-hosted install
+ * served over plain HTTP (a tailnet/LAN deployment) it is `undefined`, so
+ * calling it throws a TypeError and takes the whole click handler down with it.
+ * Prefer it when present, else build the same v4 value from
+ * `crypto.getRandomValues`, which carries no secure-context requirement (the
+ * same reasoning as `makeSlug` above). Always use this instead of calling
+ * `crypto.randomUUID()` directly.
+ */
+export function randomId(): string {
+  if (typeof crypto.randomUUID === 'function') return crypto.randomUUID()
+  const bytes = new Uint8Array(16)
+  crypto.getRandomValues(bytes)
+  bytes[6] = (bytes[6] & 0x0f) | 0x40 // version 4
+  bytes[8] = (bytes[8] & 0x3f) | 0x80 // variant 10xx
+  const hex = Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('')
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`
+}
+
 export function formatBytes(bytes: number | null): string {
   if (!bytes && bytes !== 0) return '—'
   const units = ['B', 'KB', 'MB', 'GB']

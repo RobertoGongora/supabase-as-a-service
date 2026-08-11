@@ -3,7 +3,8 @@ import type { Database } from '../lib/database.types'
 import { publicFileUrl, supabase } from '../lib/supabase'
 import { uploadPickedFile } from '../lib/upload'
 import { useAuth } from '../contexts/AuthContext'
-import { formatBytes, formatDate } from '../lib/util'
+import { formatBytes, formatDate, randomId } from '../lib/util'
+import { copyText } from '../lib/clipboard'
 import { CheckIcon, FileIcon, LinkIcon, TrashIcon, UploadIcon, GridIcon, ListIcon, DownloadIcon, PencilIcon, GlobeIcon, CopyIcon, CloseIcon } from '../components/icons'
 import { AddToCollectionBar } from '../components/AddToCollectionBar'
 import {
@@ -114,7 +115,7 @@ export default function FilesPage() {
     setError(null)
     try {
       for (const file of Array.from(fileList)) {
-        const path = `${user!.id}/${crypto.randomUUID()}/${file.name}`
+        const path = `${user!.id}/${randomId()}/${file.name}`
         const size = await uploadPickedFile(path, file)
         const { error: rowErr } = await supabase.from('files').insert({
           owner_id: user!.id,
@@ -157,7 +158,7 @@ export default function FilesPage() {
       return
     }
     await supabase.from('files').update({ visibility: 'unlisted' }).eq('id', f.id)
-    await navigator.clipboard.writeText(data.signedUrl).catch(() => {})
+    await copyText(data.signedUrl)
     setLinkFor({ id: f.id, url: data.signedUrl })
     load()
   }
@@ -167,8 +168,8 @@ export default function FilesPage() {
     window.setTimeout(() => setToast(null), 2500)
   }
 
-  async function copyText(text: string) {
-    await navigator.clipboard.writeText(text).catch(() => {})
+  async function copyAndFlash(text: string) {
+    await copyText(text)
     flashToast('Copied to clipboard')
   }
 
@@ -244,7 +245,7 @@ export default function FilesPage() {
       }
       if (items.length) {
         setShareResult({ mode, items })
-        if (items.length === 1) await copyText(items[0].url)
+        if (items.length === 1) await copyAndFlash(items[0].url)
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not create share links')
@@ -398,7 +399,7 @@ export default function FilesPage() {
                 </div>
                 {f.public_path && (
                   <PublicBadge
-                    onCopy={() => copyText(publicFileUrl(f.public_path!))}
+                    onCopy={() => copyAndFlash(publicFileUrl(f.public_path!))}
                     onUnpublish={() => unpublishFile(f)}
                   />
                 )}
@@ -439,7 +440,7 @@ export default function FilesPage() {
                   onRemove={() => remove(f)}
                   onSetScope={(scope) => setScope(doc, scope)}
                   onUpdateMetadata={(title, description) => updateFileMetadata(f.id, title, description)}
-                  onCopyPublic={() => copyText(publicFileUrl(f.public_path!))}
+                  onCopyPublic={() => copyAndFlash(publicFileUrl(f.public_path!))}
                   onUnpublish={() => unpublishFile(f)}
                 />
               )
@@ -464,7 +465,7 @@ export default function FilesPage() {
         <ShareResultModal
           result={shareResult}
           onClose={() => setShareResult(null)}
-          onCopy={copyText}
+          onCopy={copyAndFlash}
         />
       )}
 

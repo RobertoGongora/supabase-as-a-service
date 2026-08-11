@@ -3,6 +3,7 @@ import type { Database } from '../../lib/database.types'
 import { emailInboundUrl, inviteLinkUrl, slackEventsUrl, supabase } from '../../lib/supabase'
 import { useAuth } from '../../contexts/AuthContext'
 import { formatDate } from '../../lib/util'
+import { copyText } from '../../lib/clipboard'
 import { CheckIcon, CopyIcon, DownloadIcon, LinkIcon, PlusIcon, TrashIcon } from '../../components/icons'
 import { bindingToForm, buildSlackBindingPayload } from '../../lib/slackBinding'
 import { clearDismissed, isStandalone } from '../../lib/pwa'
@@ -646,7 +647,7 @@ export function EmailCard() {
 
   async function copyInbound() {
     if (!existing?.inbound_token) return
-    await navigator.clipboard.writeText(emailInboundUrl(existing.inbound_token))
+    await copyText(emailInboundUrl(existing.inbound_token))
     setCopied(true)
     setTimeout(() => setCopied(false), 1500)
   }
@@ -975,7 +976,7 @@ export function InviteLinks() {
   async function copy(link: InviteLink) {
     const url = inviteLinkUrl(link.token)
     try {
-      await navigator.clipboard.writeText(url)
+      await copyText(url)
       setCopiedId(link.id)
       setTimeout(() => setCopiedId((c) => (c === link.id ? null : c)), 1500)
     } catch {
@@ -1351,7 +1352,7 @@ export function SlackCard() {
   }
 
   async function copyUrl() {
-    await navigator.clipboard.writeText(slackEventsUrl)
+    await copyText(slackEventsUrl)
     setCopied(true)
     setTimeout(() => setCopied(false), 1500)
   }
@@ -1386,7 +1387,7 @@ settings:
 `
 
   async function copyManifest() {
-    await navigator.clipboard.writeText(appManifest)
+    await copyText(appManifest)
     setCopiedManifest(true)
     setTimeout(() => setCopiedManifest(false), 1500)
   }

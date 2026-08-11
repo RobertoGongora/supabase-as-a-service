@@ -8,7 +8,7 @@ import { parseArtifactBlocks } from '../lib/artifacts'
 import { ResizeHandle, usePanelResize } from '../components/ResizeHandle'
 import { uploadPickedFile } from '../lib/upload'
 import { estimateTokensFromChars } from '../lib/tokens'
-import { normalizeChatTitle, skillInvocationSentence } from '../lib/util'
+import { normalizeChatTitle, randomId, skillInvocationSentence } from '../lib/util'
 import { friendlyChatError, isAbortError } from '../lib/chatError'
 import { useOrchestratorContext } from '../lib/useModelContext'
 import { ContextUsage } from '../components/ContextMeter'
@@ -580,7 +580,7 @@ export default function ChatPage() {
     try {
       const added: ChatAttachment[] = []
       for (const file of Array.from(fileList)) {
-        const path = `${user.id}/${crypto.randomUUID()}/${file.name}`
+        const path = `${user.id}/${randomId()}/${file.name}`
         const size = await uploadPickedFile(path, file)
         await supabase.from('files').insert({
           owner_id: user.id,
@@ -669,7 +669,7 @@ export default function ChatPage() {
       const controller = new AbortController()
       abortRef.current = controller
       // Per-send id so Stop can cancel the specific background run.
-      const runId = crypto.randomUUID()
+      const runId = randomId()
       activeRunRef.current = { conversationId: convId, runId }
       clearPersistWait()
       // Did the saved reply arrive over this SSE connection? If not (the stream
