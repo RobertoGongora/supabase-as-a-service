@@ -1,67 +1,39 @@
-## TODO
+# TODO
 
-### Better Artifact Hosting
+The maintainer's scratchpad: loose ideas that are not yet worth a spec. Anything
+with a shape and a reason belongs in [ROADMAP.md](./ROADMAP.md) instead, and
+anything already built is described in the [docs](./docs/README.md).
 
-### Imagegen and openrouter
+## Ideas
 
-### Reindex Function
+**Richer artifact hosting.** A shared HTML page is a single file today. Bundled,
+multi-file pages served from the same link would make "here is the thing I built"
+cover a lot more ground.
 
-### Chat with "Files"
+**Image generation.** Ask for an image in chat and get one back, saved as a file
+like any other output.
 
-### Make Collections of Files to chat with
-Create a chat and upload files is a start to this but can not get back there and keep chatting
+**Reindex on demand.** A way to re-run knowledge indexing over a document — after a
+better extractor lands, or when an early ingest went wrong.
 
+**Version in the footer.** Show the deployed commit so it is obvious which build a
+workspace is running.
 
-### Review the status of Edge functions
+## Functions worth forging
 
-```
-Two things to know before deploying
-I couldn't typecheck the edge functions — Deno isn't installed locally, and the app's tsc/eslint skip supabase/functions. I reviewed them by hand; the real check is supabase functions deploy chat webhook scheduler (or deno check).
-gen:types not run — it needs a linked project, but provider is already typed as string, so the build stays green without it. Run it after applying the migration if you want to be thorough.
-```
+Deterministic work an LLM should not be doing by hand. Each becomes a tool, and
+therefore a step in a larger process:
 
-### Prompts that get passed in the chat 
-Business prompts
-Personal Prompts
+- a calculator,
+- OCR for scanned PDFs before the text reaches a model,
+- unit and format conversions.
 
+The shape they enable, end to end: an opt-out email arrives → the assistant turns
+unstructured text into structured fields → a function writes those fields somewhere
+deterministic.
 
-### Manage Supabase vault in the UI
+## Trying a webhook by hand
 
-
-### Sha code in the footer
-So we know the released version
-
-
-### Edge Function Web Parser
-
-
-### Ui for the event system
-Then we can connect these edge functions to the events
-
-
-
-### Examples
-You can vibe code and deploy these functions.
-
-Edge Function Calc
-Edge Function PDF Parser OCR before AI
-Edge Function HTML to Markdown parser - more simple pages work here 
-
-They become APIs or steps in a more complex process.
-
-Here is a common one I use.
-
-Opt-out email comes in 
-Then the system uses ai to parse the data out of it - non-deterministic unstructured to structured
-Then those results are deterministic results that get sent to the edge function that will save them to the database (yes we could just write the db)
-
-
-
-### Testing Functions
-
-```
-curl -X POST 'https://pcyvmpjrszgatwvmyxbg.supabase.co/functions/v1/webhook/ebf93410-3913-416b-a931-a82e28fa2015' \
-  -H 'Content-Type: application/json' \
-  -d '{"expression":"2 + 2 * 10"}'
-
+```bash
+curl -X POST 'https://<your-project>.supabase.co/functions/v1/webhook/<token>' -H 'Content-Type: application/json' -d '{"expression":"2 + 2 * 10"}'
 ```

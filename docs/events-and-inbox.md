@@ -1,6 +1,6 @@
 # Events, listeners & the unified inbox
 
-Two connected features (migrations `0060_events.sql` + `0061_messages.sql`):
+Two connected features (migrations `0063_events.sql` + `0064_messages.sql`):
 
 - **Events + event listeners** — a workspace pub/sub automation substrate.
 - **Unified inbox** — one place for messages from any source (email, Slack,
@@ -52,24 +52,20 @@ action `run_agent` with that agent.
 Each dispatch is recorded in `event_listener_runs` (shown under the listener) and
 logged to `activity_log` as `listener.run` / `listener.error`.
 
-## Dispatcher cron (one-time setup)
+## Dispatcher cron (automatic since `0094_automation_cron.sql`)
 
-The `event-dispatch` edge function does the matching + running. Like the
-`scheduler`, it is **not** auto-scheduled — after the function is deployed, wire
-pg_cron once against the live project (same convention as `0010_scheduled_agents.sql`):
+The `event-dispatch` edge function does the matching + running, ticked every
+minute by pg_cron — alongside the agent scheduler and the PDF-ingest job. Those
+jobs are scheduled **for you** on deploy: the pipeline calls
+`setup_automation_cron(base_url)` after migrations, which idempotently (re)creates
+every required job with the project's own URL. Nothing to run by hand, on a fresh
+project or a tenant.
 
-```sql
-select cron.schedule('dispatch-events', '* * * * *', $$
-  select net.http_post(
-    url := 'https://<project-ref>.supabase.co/functions/v1/event-dispatch',
-    headers := jsonb_build_object('Content-Type', 'application/json',
-                                  'x-cron-secret', (select secret from public.cron_config limit 1)),
-    body := '{}'::jsonb
-  );
-$$);
-```
+If you ever need to check or repair it, `automation_cron_status()` reports which
+expected jobs are actually scheduled — that is what the **Automation health**
+banner on the Listeners page reads — and an admin can re-run the setup from there.
 
-Until this runs, events still accumulate (and show in the feed) but listeners
+Until the jobs exist, events still accumulate (and show in the feed) but listeners
 don't fire. Safety: each event is claimed once (`processed_at`), and each tick
 caps how many actions it runs, so chained automations stay bounded.
 
