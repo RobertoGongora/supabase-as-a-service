@@ -12,12 +12,18 @@
 //             is deploying: Railway rebuilds the app and the supabase-deploy
 //             workflow applies migrations + redeploys edge functions.
 //
+// Multi-repo: each action targets the repo of the card's board
+// (`features.board_id` → `feature_boards.repo`); a card with no board is on the
+// implicit default board and keeps using the `GITHUB_REPO` env var, exactly as
+// before. Resolution lives in the pure `_shared/feature_boards.ts`.
+//
 // Auth: verify_jwt validates the caller's token; we additionally require
 // profiles.is_admin. The GitHub PAT lives ONLY in the team vault (secret
 // `github_pat`) and is read via the service-role `read_vault_secret` RPC —
 // same posture as every other credential in this system.
 
 import { createClient } from 'npm:@supabase/supabase-js@2.45.4'
+import { resolveRepo } from '../_shared/feature_boards.ts'
 
 const GITHUB_REPO = Deno.env.get('GITHUB_REPO') ?? 'alnutile/supabase-as-a-service'
 const GH_API = 'https://api.github.com'
@@ -96,8 +102,8 @@ async function issueBody(db: DB, feature: { description: string; screenshots: st
 }
 
 // Find the PR that references the issue via timeline cross-references.
-async function findLinkedPr(pat: string, issueNumber: number): Promise<{ number: number; url: string } | null> {
-  const { ok, data } = await gh(pat, 'GET', `/repos/${GITHUB_REPO}/issues/${issueNumber}/timeline?per_page=100`)
+async function findLinkedPr(pat: string, repo: string, issueNumber: number): Promise<{ number: number; url: string } | null> {
+  const { ok, data } = await gh(pat, 'GET', `/repos/${repo}/issues/${issueNumber}/timeline?per_page=100`)
   if (!ok || !Array.isArray(data)) return null
   let found: { number: number; url: string } | null = null
   for (const ev of data) {
@@ -109,18 +115,18 @@ async function findLinkedPr(pat: string, issueNumber: number): Promise<{ number:
   return found
 }
 
-async function syncRow(db: DB, pat: string, row: { id: string; issue_number: number | null; pr_number: number | null }) {
+async function syncRow(db: DB, pat: string, repo: string, row: { id: string; issue_number: number | null; pr_number: number | null }) {
   let prNumber = row.pr_number
   let prUrl: string | undefined
   if (!prNumber && row.issue_number) {
-    const linked = await findLinkedPr(pat, row.issue_number)
+    const linked = await findLinkedPr(pat, repo, row.issue_number)
     if (linked) {
       prNumber = linked.number
       prUrl = linked.url
     }
   }
   if (!prNumber) return { pr_number: null, pr_state: null }
-  const { ok, data } = await gh(pat, 'GET', `/repos/${GITHUB_REPO}/pulls/${prNumber}`)
+  const { ok, data } = await gh(pat, 'GET', `/repos/${repo}/pulls/${prNumber}`)
   if (!ok) return { pr_number: prNumber, pr_state: null }
   const state = data.merged ? 'merged' : data.state // open | closed | merged
   const update: Record<string, unknown> = {
@@ -162,11 +168,19 @@ Deno.serve(async (req: Request) => {
   const { data: feature } = await db.from('features').select('*').eq('id', id).maybeSingle()
   if (!feature) return json({ error: 'Feature not found.' }, 404)
 
+  // Which repository this card targets: its board's repo, or the env default
+  // for a card on the implicit default board.
+  const { data: boards } = await db.from('feature_boards').select('id, repo')
+  const repo = resolveRepo(feature, boards ?? [], GITHUB_REPO)
+  if (!repo) {
+    return json({ error: 'This card’s board has no valid GitHub repository (expected "owner/name").' }, 400)
+  }
+
   try {
     if (action === 'approve') {
       if (feature.issue_number) return json({ error: 'An issue already exists for this feature.' }, 400)
       const bodyText = await issueBody(db, feature)
-      const { ok, status, data } = await gh(pat, 'POST', `/repos/${GITHUB_REPO}/issues`, {
+      const { ok, status, data } = await gh(pat, 'POST', `/repos/${repo}/issues`, {
         title: feature.title,
         body: bodyText,
         labels: [APPROVED_LABEL],
@@ -185,24 +199,24 @@ Deno.serve(async (req: Request) => {
       await db.from('activity_log').insert({
         type: 'feature.approved',
         summary: `Feature approved for work: ${feature.title}`,
-        detail: { feature_id: id, issue: data.html_url },
+        detail: { feature_id: id, repo, issue: data.html_url },
         actor_id: userId,
       })
       return json({ ok: true, issue_number: data.number, issue_url: data.html_url })
     }
 
     if (action === 'sync') {
-      const update = await syncRow(db, pat, feature)
+      const update = await syncRow(db, pat, repo, feature)
       return json({ ok: true, ...update })
     }
 
     if (action === 'merge') {
       // Refresh first so we merge the real linked PR.
-      const synced = await syncRow(db, pat, feature)
+      const synced = await syncRow(db, pat, repo, feature)
       const prNumber = (synced.pr_number as number | null) ?? feature.pr_number
       if (!prNumber) return json({ error: 'No PR is linked to this feature yet.' }, 400)
       if (synced.pr_state === 'merged') return json({ ok: true, already: true })
-      const { ok, status, data } = await gh(pat, 'PUT', `/repos/${GITHUB_REPO}/pulls/${prNumber}/merge`, {
+      const { ok, status, data } = await gh(pat, 'PUT', `/repos/${repo}/pulls/${prNumber}/merge`, {
         merge_method: 'squash',
       })
       if (!ok) {
@@ -219,7 +233,7 @@ Deno.serve(async (req: Request) => {
       await db.from('activity_log').insert({
         type: 'feature.shipped',
         summary: `Feature merged: ${feature.title}`,
-        detail: { feature_id: id, pr: feature.pr_url },
+        detail: { feature_id: id, repo, pr: feature.pr_url },
         actor_id: userId,
       })
       return json({ ok: true })

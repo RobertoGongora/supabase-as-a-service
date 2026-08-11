@@ -2,13 +2,18 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../contexts/AuthContext'
 import { formatDate } from '../lib/util'
-import { removeFeature, upsertFeature } from '../lib/features'
+import { featuresForBoard, isValidRepo, removeFeature, upsertFeature } from '../lib/features'
 import { LinkIcon, PaperclipIcon, PlusIcon, TrashIcon } from '../components/icons'
 
 // The self-improvement pipeline as a kanban. Lane moves are the approvals:
 // idea → approved opens a GitHub issue the Claude Code action builds from;
 // → ready merges the PR (merge = deploy). Side-effect moves go through the
 // `features` edge function; plain metadata edits hit the table directly.
+//
+// Multi-repo: a `feature_boards` row is a board bound to one GitHub repo. The
+// switcher's first tab is the DEFAULT board — cards with `board_id = null`,
+// targeting the function's `GITHUB_REPO` env var — so a workspace with no
+// boards is exactly the original single-board page.
 
 interface Feature {
   id: string
@@ -22,9 +27,22 @@ interface Feature {
   pr_state: string | null
   last_error: string | null
   owner_id: string | null
+  board_id: string | null
   created_at: string
   updated_at: string
 }
+
+interface FeatureBoard {
+  id: string
+  name: string
+  repo: string
+  created_at: string
+}
+
+// The repo behind the default board is a server-side secret (`GITHUB_REPO` on
+// the edge function). `VITE_GITHUB_REPO` is an OPTIONAL build-time mirror used
+// only as a label — never as the value the function acts on.
+const DEFAULT_REPO_LABEL: string | undefined = import.meta.env.VITE_GITHUB_REPO
 
 type Lane = 'idea' | 'approved' | 'ready' | 'shipped'
 
@@ -56,9 +74,13 @@ async function callFeaturesFn(action: 'approve' | 'sync' | 'merge', id: string) 
 export default function FeaturesPage() {
   const { user } = useAuth()
   const [features, setFeatures] = useState<Feature[]>([])
+  const [boards, setBoards] = useState<FeatureBoard[]>([])
+  // null = the default board (cards with no board_id).
+  const [boardId, setBoardId] = useState<string | null>(null)
   const [isAdmin, setIsAdmin] = useState(false)
   const [loading, setLoading] = useState(true)
   const [creating, setCreating] = useState(false)
+  const [addingBoard, setAddingBoard] = useState(false)
   const [detail, setDetail] = useState<Feature | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
   const [dragOver, setDragOver] = useState<Lane | null>(null)
@@ -73,9 +95,24 @@ export default function FeaturesPage() {
     setLoading(false)
   }, [])
 
+  const loadBoards = useCallback(async () => {
+    const { data } = await supabase
+      .from('feature_boards')
+      .select('id, name, repo, created_at')
+      .order('created_at', { ascending: true })
+    setBoards((data as unknown as FeatureBoard[]) ?? [])
+  }, [])
+
   useEffect(() => {
     load()
-  }, [load])
+    loadBoards()
+  }, [load, loadBoards])
+
+  // If the selected board disappears (another admin deleted it), fall back to
+  // the default board rather than rendering an empty phantom kanban.
+  useEffect(() => {
+    if (boardId && !boards.some((b) => b.id === boardId)) setBoardId(null)
+  }, [boards, boardId])
 
   useEffect(() => {
     if (!user) return
@@ -117,11 +154,16 @@ export default function FeaturesPage() {
         setFeatures((prev) => upsertFeature(prev, row))
         setDetail((d) => (d?.id === row.id ? row : d))
       })
+      // A board created (or removed) elsewhere should appear in the switcher
+      // without a reload — same reasoning as the `features` subscription above.
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'feature_boards' }, () => {
+        loadBoards()
+      })
       .subscribe()
     return () => {
       supabase.removeChannel(channel)
     }
-  }, [user])
+  }, [user, loadBoards])
 
   async function moveTo(feature: Feature, lane: Lane) {
     if (!isAdmin || feature.lane === lane) return
@@ -142,6 +184,30 @@ export default function FeaturesPage() {
     }
     load()
   }
+
+  async function deleteBoard(board: FeatureBoard) {
+    // Only offered for an empty board, but re-check here: the count could have
+    // changed under us, and a delete would strand those cards on the default
+    // board (the FK is `on delete set null` — cards are never deleted).
+    if (featuresForBoard(features, board.id).length) {
+      setNotice('That board still has cards. Move or delete them first.')
+      return
+    }
+    if (!confirm(`Delete the board “${board.name}” (${board.repo})?`)) return
+    setNotice(null)
+    const { error } = await supabase.from('feature_boards').delete().eq('id', board.id)
+    if (error) {
+      setNotice(error.message)
+      return
+    }
+    setBoardId(null)
+    loadBoards()
+    load()
+  }
+
+  const board = boards.find((b) => b.id === boardId) ?? null
+  const boardFeatures = featuresForBoard(features, boardId)
+  const boardRepo = board ? board.repo : DEFAULT_REPO_LABEL
 
   return (
     <div className="flex h-full flex-col overflow-hidden">
@@ -168,9 +234,54 @@ export default function FeaturesPage() {
         </div>
       )}
 
+      {/* Board switcher — one board per GitHub repo. With no boards there is
+          nothing to switch between, so only the admin's "New board" affordance
+          renders and the page stays the single-board kanban it has always been. */}
+      {(boards.length > 0 || isAdmin) && (
+        <div className="flex flex-wrap items-center gap-2 px-6 pt-3">
+          {(boards.length ? [null, ...boards.map((b) => b.id)] : []).map((id) => {
+            const b = boards.find((x) => x.id === id) ?? null
+            const active = boardId === id
+            const count = featuresForBoard(features, id).length
+            return (
+              <button
+                key={id ?? 'default'}
+                onClick={() => setBoardId(id)}
+                className={`flex items-center gap-2 rounded-full border px-3 py-1.5 text-left ${
+                  active
+                    ? 'border-primary bg-primary-soft text-primary'
+                    : 'border-border bg-surface text-muted hover:border-border-strong'
+                }`}
+              >
+                <span className="text-sm font-medium">{b ? b.name : 'Main'}</span>
+                <span className="text-[11px] text-faint">{b ? b.repo : (DEFAULT_REPO_LABEL ?? 'default repo')}</span>
+                <span className="rounded-full bg-surface-2 px-1.5 text-[11px] text-muted">{count}</span>
+              </button>
+            )
+          })}
+          {isAdmin && (
+            <button
+              onClick={() => setAddingBoard(true)}
+              className="flex items-center gap-1 rounded-full border border-dashed border-border-strong px-3 py-1.5 text-xs font-medium text-muted hover:text-text"
+            >
+              <PlusIcon className="h-3.5 w-3.5" /> New board
+            </button>
+          )}
+          {isAdmin && board && boardFeatures.length === 0 && (
+            <button
+              onClick={() => deleteBoard(board)}
+              className="rounded-md p-1.5 text-faint hover:bg-red-50 hover:text-red-600"
+              title={`Delete the “${board.name}” board`}
+            >
+              <TrashIcon className="h-4 w-4" />
+            </button>
+          )}
+        </div>
+      )}
+
       <div className="flex flex-1 gap-4 overflow-x-auto px-6 py-4">
         {LANES.map((lane) => {
-          const cards = features.filter((f) => f.lane === lane.key)
+          const cards = boardFeatures.filter((f) => f.lane === lane.key)
           return (
             <div
               key={lane.key}
@@ -263,10 +374,23 @@ export default function FeaturesPage() {
 
       {creating && (
         <NewIdeaModal
+          boardId={boardId}
+          boardName={board ? board.name : 'Main'}
+          boardRepo={boardRepo}
           onClose={() => setCreating(false)}
           onSaved={() => {
             setCreating(false)
             load()
+          }}
+        />
+      )}
+      {addingBoard && (
+        <NewBoardModal
+          onClose={() => setAddingBoard(false)}
+          onSaved={(id) => {
+            setAddingBoard(false)
+            setBoardId(id)
+            loadBoards()
           }}
         />
       )}
@@ -286,7 +410,19 @@ export default function FeaturesPage() {
   )
 }
 
-function NewIdeaModal({ onClose, onSaved }: { onClose: () => void; onSaved: () => void }) {
+function NewIdeaModal({
+  boardId,
+  boardName,
+  boardRepo,
+  onClose,
+  onSaved,
+}: {
+  boardId: string | null
+  boardName: string
+  boardRepo: string | undefined
+  onClose: () => void
+  onSaved: () => void
+}) {
   const { user } = useAuth()
   const [title, setTitle] = useState('')
   const [description, setDescription] = useState('')
@@ -312,6 +448,8 @@ function NewIdeaModal({ onClose, onSaved }: { onClose: () => void; onSaved: () =
         screenshots: paths,
         lane: 'idea',
         owner_id: user.id,
+        // null files it on the default board, which is every card today.
+        board_id: boardId,
       })
       if (insErr) throw new Error(insErr.message)
       onSaved()
@@ -326,6 +464,10 @@ function NewIdeaModal({ onClose, onSaved }: { onClose: () => void; onSaved: () =
       <div className="flex max-h-[92vh] w-full max-w-lg flex-col overflow-hidden rounded-t-2xl bg-surface shadow-xl sm:rounded-2xl">
         <div className="border-b border-border px-5 py-3">
           <h2 className="text-sm font-semibold text-text">New idea</h2>
+          <p className="mt-0.5 text-[11px] text-faint">
+            Filed on <strong className="font-medium text-muted">{boardName}</strong>
+            {boardRepo ? ` · ${boardRepo}` : ''}
+          </p>
         </div>
         <div className="flex-1 space-y-4 overflow-y-auto p-5">
           <label className="block">
@@ -374,6 +516,88 @@ function NewIdeaModal({ onClose, onSaved }: { onClose: () => void; onSaved: () =
             className="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-white hover:bg-primary-strong disabled:opacity-50"
           >
             {saving ? 'Saving…' : 'Add idea'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// Admin-only: bind a new kanban to a GitHub repository. The repo string is
+// validated here AND by a check constraint AND by the edge function — it ends
+// up interpolated into GitHub REST paths, so "owner/name" is a hard rule, not
+// a formatting preference.
+function NewBoardModal({ onClose, onSaved }: { onClose: () => void; onSaved: (id: string) => void }) {
+  const { user } = useAuth()
+  const [name, setName] = useState('')
+  const [repo, setRepo] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const repoOk = isValidRepo(repo)
+
+  async function save() {
+    if (!name.trim() || !repoOk) return
+    setSaving(true)
+    setError(null)
+    const { data, error: insErr } = await supabase
+      .from('feature_boards')
+      .insert({ name: name.trim(), repo: repo.trim(), created_by: user?.id ?? null })
+      .select('id')
+      .single()
+    if (insErr || !data) {
+      setError(insErr?.message ?? 'Could not create the board.')
+      setSaving(false)
+      return
+    }
+    onSaved(data.id)
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-slate-900/40 sm:items-center sm:p-4">
+      <div className="flex w-full max-w-md flex-col overflow-hidden rounded-t-2xl bg-surface shadow-xl sm:rounded-2xl">
+        <div className="border-b border-border px-5 py-3">
+          <h2 className="text-sm font-semibold text-text">New board</h2>
+        </div>
+        <div className="space-y-4 p-5">
+          <label className="block">
+            <span className="mb-1 block text-xs font-medium text-muted">Name</span>
+            <input
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="Marketing site"
+              className="w-full rounded-lg border border-border-strong px-3 py-2 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary-soft"
+            />
+          </label>
+          <label className="block">
+            <span className="mb-1 block text-xs font-medium text-muted">
+              GitHub repository — <code>owner/name</code>. Approving a card on this board opens the
+              issue here, and merging its PR deploys that repo.
+            </span>
+            <input
+              value={repo}
+              onChange={(e) => setRepo(e.target.value)}
+              placeholder="acme/marketing-site"
+              className="w-full rounded-lg border border-border-strong px-3 py-2 font-mono text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary-soft"
+            />
+          </label>
+          {repo.trim() && !repoOk && (
+            <p className="text-xs text-amber-700">Use the <code>owner/name</code> form, e.g. <code>acme/web</code>.</p>
+          )}
+          <p className="text-xs text-faint">
+            The workspace secret <code>github_pat</code> must have access to this repository.
+          </p>
+          {error && <p className="text-sm text-red-600">{error}</p>}
+        </div>
+        <div className="flex justify-end gap-2 border-t border-border px-5 py-3">
+          <button onClick={onClose} className="rounded-lg px-3 py-2 text-sm font-medium text-muted hover:bg-surface-hover">
+            Cancel
+          </button>
+          <button
+            onClick={save}
+            disabled={saving || !name.trim() || !repoOk}
+            className="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-white hover:bg-primary-strong disabled:opacity-50"
+          >
+            {saving ? 'Creating…' : 'Create board'}
           </button>
         </div>
       </div>

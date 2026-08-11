@@ -1448,6 +1448,7 @@ export interface Database {
           pr_state: string | null
           last_error: string | null
           owner_id: string | null
+          board_id: string | null
           created_at: string
           updated_at: string
         }
@@ -1464,10 +1465,29 @@ export interface Database {
           pr_state?: string | null
           last_error?: string | null
           owner_id?: string | null
+          board_id?: string | null
           created_at?: string
           updated_at?: string
         }
         Update: Partial<Database['public']['Tables']['features']['Insert']>
+        Relationships: []
+      }
+      feature_boards: {
+        Row: {
+          id: string
+          name: string
+          repo: string
+          created_by: string | null
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          name: string
+          repo: string
+          created_by?: string | null
+          created_at?: string
+        }
+        Update: Partial<Database['public']['Tables']['feature_boards']['Insert']>
         Relationships: []
       }
       security_scans: {
