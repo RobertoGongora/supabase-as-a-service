@@ -3,9 +3,14 @@
 // The GitHub side of the Features kanban. Lane moves with side effects call
 // here; plain moves go straight to the table.
 //   approve → open a GitHub issue (title + description + signed screenshot
-//             URLs) labeled `approved-for-work`; the Claude Code GitHub Action
-//             (.github/workflows/claude-feature.yml) picks that up, implements
-//             the feature on a branch, and opens a PR referencing the issue.
+//             URLs) labeled `approved-for-work`. Two build paths pick it up:
+//             the Claude Code GitHub Action (.github/workflows/claude-feature.yml)
+//             on cloud deployments, or — when a local builder capability is
+//             registered via AGENT_JOBS_EXTRA_CAPABILITIES — a directly
+//             enqueued `agent_jobs` row (capability `builder`) that a
+//             self-hosted worker claims and turns into a PR. The board is the
+//             single source of approvals: the label is informative, workers
+//             act on the queue row, never on out-of-band label changes.
 //   sync    → find the PR linked to the issue (timeline cross-references) and
 //             refresh its state; a merged PR moves the card to `shipped`.
 //   merge   → squash-merge the PR (the "approved to merge" lane). Merging main
@@ -70,6 +75,56 @@ async function gh(pat: string, method: string, path: string, body?: unknown): Pr
 
 // deno-lint-ignore no-explicit-any
 type DB = any
+
+// A local builder is "configured" when the functions runtime registers the
+// builder capability (same env the agent_jobs builtins read). Deterministic
+// gate: no env → cloud-only behavior, byte-identical to upstream.
+function builderConfigured(): boolean {
+  try {
+    const extra = JSON.parse(Deno.env.get('AGENT_JOBS_EXTRA_CAPABILITIES') ?? '{}')
+    return Array.isArray(extra?.builder) && extra.builder.includes('builder.build_issue')
+  } catch {
+    return false
+  }
+}
+
+// Enqueue the build job for a self-hosted builder worker. The job contract is
+// host-agnostic on purpose: `host` names the git backend ('github' today;
+// forgejo/gitea/gitlab later) and `repo` is owner/name on that host, so the
+// worker never assumes github.com. Failures are logged but never fail the
+// approve — the issue exists either way and the job can be enqueued by hand.
+async function enqueueBuildJob(
+  db: DB,
+  userId: string,
+  feature: { id: string; title: string },
+  issueNumber: number,
+): Promise<void> {
+  try {
+    const { error } = await db.from('agent_jobs').insert({
+      requested_by: userId,
+      capability: 'builder',
+      operation: 'builder.build_issue',
+      status: 'queued',
+      instructions: `Build feature "${feature.title}" from issue #${issueNumber} and open a PR.`,
+      parameters: { issue_number: issueNumber, repo: GITHUB_REPO, host: 'github' },
+      idempotency_key: `builder:${GITHUB_REPO}#${issueNumber}`,
+    })
+    if (error) throw new Error(error.message)
+    await db.from('activity_log').insert({
+      type: 'feature.build_enqueued',
+      summary: `Build job queued for issue #${issueNumber}: ${feature.title}`,
+      detail: { feature_id: feature.id, issue_number: issueNumber, repo: GITHUB_REPO, host: 'github' },
+      actor_id: userId,
+    })
+  } catch (err) {
+    await db.from('activity_log').insert({
+      type: 'feature.build_enqueue_failed',
+      summary: `Could not queue build job for issue #${issueNumber}: ${err instanceof Error ? err.message : 'error'}`,
+      detail: { feature_id: feature.id, issue_number: issueNumber, repo: GITHUB_REPO },
+      actor_id: userId,
+    }).catch(() => {})
+  }
+}
 
 async function issueBody(db: DB, feature: { description: string; screenshots: string[]; id: string }): Promise<string> {
   const parts = [feature.description || '(no description provided)']
@@ -188,6 +243,9 @@ Deno.serve(async (req: Request) => {
         detail: { feature_id: id, issue: data.html_url },
         actor_id: userId,
       })
+      if (builderConfigured()) {
+        await enqueueBuildJob(db, userId, feature, data.number)
+      }
       return json({ ok: true, issue_number: data.number, issue_url: data.html_url })
     }
 
