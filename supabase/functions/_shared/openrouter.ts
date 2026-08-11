@@ -10,7 +10,15 @@
 
 import { describeModelError } from './errors.ts'
 
-const OR_URL = Deno.env.get('OPENROUTER_BASE_URL') ?? 'https://openrouter.ai/api/v1/chat/completions'
+// Guarded read: under `deno test` (no --allow-env) a bare Deno.env.get throws
+// NotCapable at import time and kills the whole test runner.
+const OR_URL = (() => {
+  try {
+    return Deno.env.get('OPENROUTER_BASE_URL') ?? 'https://openrouter.ai/api/v1/chat/completions'
+  } catch {
+    return 'https://openrouter.ai/api/v1/chat/completions'
+  }
+})()
 
 export type Effort = 'low' | 'medium' | 'high'
 
