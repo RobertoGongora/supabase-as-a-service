@@ -13,6 +13,14 @@ import { describe, expect, it } from 'vitest'
 // no filesystem access is needed and it works under vitest/jsdom.
 const files = Object.keys(import.meta.glob('../../supabase/migrations/*.sql'))
 
+// Numbers claimed by an in-flight branch that hasn't landed yet. A later branch
+// must skip them (taking one would produce the duplicate prefix this file
+// exists to prevent), which leaves a temporary hole in the sequence. List it
+// here so the gap is DOCUMENTED rather than silently tolerated — an unexplained
+// hole still fails. Remove the entry once the branch lands.
+//   0111 — reserved by an in-flight branch (0112 is multi-repo feature boards).
+const RESERVED_PREFIXES = new Set([111])
+
 function nameOf(path: string): string {
   return path.split('/').pop() ?? path
 }
@@ -46,7 +54,8 @@ describe('migration filenames', () => {
   })
 
   it('has contiguous, gap-free numeric prefixes', () => {
-    const nums = [...new Set(files.map((f) => Number(prefixOf(f))))].sort((a, b) => a - b)
+    const present = new Set(files.map((f) => Number(prefixOf(f))))
+    const nums = [...new Set([...present, ...RESERVED_PREFIXES])].sort((a, b) => a - b)
     const gaps: string[] = []
     for (let i = 1; i < nums.length; i++) {
       if (nums[i] !== nums[i - 1] + 1) gaps.push(`gap between ${nums[i - 1]} and ${nums[i]}`)

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { removeFeature, upsertFeature } from './features'
+import { featuresForBoard, isValidRepo, removeFeature, upsertFeature } from './features'
 
 const mk = (id: string, updated_at: string, extra: Record<string, unknown> = {}) => ({
   id,
@@ -42,5 +42,45 @@ describe('removeFeature', () => {
   it('is a no-op for an unknown id', () => {
     const list = [mk('a', '2026-01-03T00:00:00Z')]
     expect(removeFeature(list, 'zzz')).toHaveLength(1)
+  })
+})
+
+describe('isValidRepo', () => {
+  it('accepts owner/name slugs', () => {
+    expect(isValidRepo('acme/web')).toBe(true)
+    expect(isValidRepo('alnutile/supabase-as-a-service')).toBe(true)
+    expect(isValidRepo(' acme/web ')).toBe(true)
+  })
+
+  it('rejects anything that is not exactly owner/name', () => {
+    expect(isValidRepo('acme')).toBe(false)
+    expect(isValidRepo('acme/web/extra')).toBe(false)
+    expect(isValidRepo('https://github.com/acme/web')).toBe(false)
+    expect(isValidRepo('acme /web')).toBe(false)
+    expect(isValidRepo('')).toBe(false)
+    expect(isValidRepo(undefined)).toBe(false)
+  })
+})
+
+describe('featuresForBoard', () => {
+  const cards = [
+    { id: 'a', board_id: null },
+    { id: 'b', board_id: 'b1' },
+    { id: 'c' },
+    { id: 'd', board_id: 'b2' },
+  ]
+
+  it('null selects the default board — cards with no board_id', () => {
+    // Back-compat: every pre-existing row has board_id null and must still show.
+    expect(featuresForBoard(cards, null).map((f) => f.id)).toEqual(['a', 'c'])
+  })
+
+  it('a board id selects only that board’s cards', () => {
+    expect(featuresForBoard(cards, 'b1').map((f) => f.id)).toEqual(['b'])
+    expect(featuresForBoard(cards, 'b2').map((f) => f.id)).toEqual(['d'])
+  })
+
+  it('returns nothing for a board with no cards', () => {
+    expect(featuresForBoard(cards, 'empty')).toEqual([])
   })
 })
