@@ -104,6 +104,7 @@ async function enqueueBuildJob(
   userId: string,
   feature: { id: string; title: string },
   issueNumber: number,
+  repo: string,
 ): Promise<void> {
   try {
     const { error } = await db.from('agent_jobs').insert({
@@ -112,21 +113,21 @@ async function enqueueBuildJob(
       operation: 'builder.build_issue',
       status: 'queued',
       instructions: `Build feature "${feature.title}" from issue #${issueNumber} and open a PR.`,
-      parameters: { issue_number: issueNumber, repo: GITHUB_REPO, host: 'github' },
-      idempotency_key: `builder:${GITHUB_REPO}#${issueNumber}`,
+      parameters: { issue_number: issueNumber, repo, host: 'github' },
+      idempotency_key: `builder:${repo}#${issueNumber}`,
     })
     if (error) throw new Error(error.message)
     await db.from('activity_log').insert({
       type: 'feature.build_enqueued',
       summary: `Build job queued for issue #${issueNumber}: ${feature.title}`,
-      detail: { feature_id: feature.id, issue_number: issueNumber, repo: GITHUB_REPO, host: 'github' },
+      detail: { feature_id: feature.id, issue_number: issueNumber, repo, host: 'github' },
       actor_id: userId,
     })
   } catch (err) {
     await db.from('activity_log').insert({
       type: 'feature.build_enqueue_failed',
       summary: `Could not queue build job for issue #${issueNumber}: ${err instanceof Error ? err.message : 'error'}`,
-      detail: { feature_id: feature.id, issue_number: issueNumber, repo: GITHUB_REPO },
+      detail: { feature_id: feature.id, issue_number: issueNumber, repo },
       actor_id: userId,
     }).catch(() => {})
   }
@@ -258,7 +259,7 @@ Deno.serve(async (req: Request) => {
         actor_id: userId,
       })
       if (builderConfigured()) {
-        await enqueueBuildJob(db, userId, feature, data.number)
+        await enqueueBuildJob(db, userId, feature, data.number, repo)
       }
       return json({ ok: true, issue_number: data.number, issue_url: data.html_url })
     }
