@@ -133,11 +133,21 @@ Haiku (or any cheaper OpenRouter model) to tune the bill.
   `webhooks.allow_tools`: an untrusted room can't make the agent act unless
   an admin opts that room in.
 
+## Posting without being asked
+
+The reply paths above are reactive. A scheduled, looping or webhook-driven agent
+can also **start** a conversation with the `send_slack_message` tool — a daily
+summary into `#standup`, an alert when a check fails. It posts to a channel (or
+in-thread), needs Slack connected and the bot in that channel, and is
+rate-limited and logged per post.
+
+Because posting outward is exfiltration-capable, it's an ordinary tool row:
+**inactive until an admin turns it on** in Tools, and then still subject to
+agent tool scoping and the per-binding `allow_tools` gate.
+
 ## Not built yet (follow-ups)
 
 - DMs to the bot (`message.im`) answering with the DM-er's own context.
-- A `send_slack_message` builtin so scheduled agents can post proactive
-  updates into bound rooms.
 - In-channel binding management (`@bot use collection "Acme"`).
 - A per-thread cooldown / rate cap for ambient channels, and resolving Slack
   display names on captured inbox messages (they store the raw user id today).

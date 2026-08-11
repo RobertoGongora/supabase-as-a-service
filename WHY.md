@@ -69,13 +69,11 @@ week, handed back to you.
 
 ### Step 2 — "…but can I trust it enough to stop checking?"
 
-A draft you have to re-read every time isn't automation — it's a second job. The
-direction this project is built toward is **confidence through evaluation**: being able
-to score and check the assistant's output against your own standard, so a proven
-workflow can run *without* you hovering over it. The goal isn't "AI that writes a
-report." It's "a report I trust enough to forward." *(This is where the project is
-headed; see the roadmap — it's the difference between a toy and something a business
-actually runs on.)*
+A draft you have to re-read every time isn't automation — it's a second job. So the
+workspace lets you **score the assistant against your own standard**: rate answers as
+you go, and build a suite of test cases you can re-run whenever you change a prompt or a
+model. A proven workflow can then run *without* you hovering over it. The goal isn't "AI
+that writes a report." It's "a report I trust enough to forward."
 
 ### Step 3 — "…and my team needs this too"
 
@@ -116,8 +114,10 @@ Chat output usually dies in the chat window. Here, the assistant can turn any an
 an **artifact** — a real document (markdown, HTML, code) with a live preview and its own
 URL. Each one has a visibility switch:
 
-- **Private** — internal only
-- **Unlisted** — anyone with the link (send a proposal to a client; no account needed)
+- **Private** — just you
+- **Workspace** — everyone on the team
+- **Unlisted** — anyone with the link (send a proposal to a client; no account needed),
+  and you can put a password on it
 - **Public** — on the open web
 
 So the proposal workflow is literally: chat with the assistant (which knows your past
@@ -133,8 +133,9 @@ out.
   log.
 - **Agents:** a named assistant with its own instructions and its own allowed tools
   ("the proposal drafter", "the lead triager"). Built in a dashboard, not in code.
-- **Schedules:** run an agent every N minutes — the morning ticket digest from Step 1, a
-  recurring check.
+- **Schedules:** run an agent on a cadence — every N minutes, or at an exact time like
+  weekday mornings or the last day of the month, in your workspace's timezone. The
+  morning ticket digest from Step 1, a recurring check.
 - **Custom tools:** the assistant can call your other systems. Adding a capability is
   adding a row in a dashboard (name, description, URL) — not deploying code.
 - **Forge — deploy real, deterministic functions:** when a job needs to be *exact* — a
@@ -155,17 +156,19 @@ This is the pillar that separates a team's working tool from a personal toy. The
 automation matters, the question stops being "can it write this?" and becomes "can I
 trust it enough to stop checking?"
 
-Part of the answer already ships. The exact work can be handed to **deterministic
-functions** (see Forge above) instead of the model's best guess, and **guardrails** —
-cheap, fast pre-flight checks an admin defines — screen inputs *before* the main model
-runs, blocking a bad or hostile request rather than acting on it. The other half is on the
-way, and it starts with something simple: **feedback on every answer.** Anyone can mark a
-reply — *off target*, *needs work*, *exactly right* — so the workspace starts learning what
-"good" looks like *for your business*. That signal is both an immediate quality check and
-the raw material for **evaluation**: scoring the assistant's output against your own
-standard, so a proven workflow can be promoted to run on its own and a skill can be shared
-across the team with a track record behind it, not just a hope. The system grows with the
-company. *(Feedback and evaluation are in progress — see the roadmap.)*
+The answer ships in four parts. Exact work can be handed to **deterministic functions**
+(see Forge above) instead of the model's best guess. **Guardrails** — cheap, fast
+pre-flight checks an admin defines — screen inputs *before* the main model runs, blocking
+a bad or hostile request rather than acting on it. **Feedback on every answer** lets
+anyone mark a reply — *off target*, *needs work*, *exactly right* — with the model, skill
+and agent behind it recorded, so the workspace learns what "good" looks like *for your
+business*. And **evaluation** turns that into a measurement: a suite of your own test
+cases scores the assistant's answers, and can check what it *did* — which tools it used,
+and which it must never touch — safely, on a schedule, across several models. That's how
+a workflow earns the right to run without you hovering over it.
+
+You can also see what an unattended agent actually did, step by step, on its runs page —
+so "why did the 6am job do that?" has an answer.
 
 ### 5. You actually own it
 
