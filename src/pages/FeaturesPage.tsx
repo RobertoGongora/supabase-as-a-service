@@ -1,9 +1,29 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../contexts/AuthContext'
 import { formatDate } from '../lib/util'
 import { featuresForBoard, isValidRepo, removeFeature, upsertFeature } from '../lib/features'
-import { LinkIcon, PaperclipIcon, PlusIcon, TrashIcon } from '../components/icons'
+import { uploadPickedFile } from '../lib/upload'
+import {
+  addAttachments,
+  filterLibraryFiles,
+  libraryAttachment,
+  removeAttachment,
+  screenshotPath,
+  uploadAttachments,
+  type Attachment,
+  type LibraryFile,
+} from '../lib/featureAttachments'
+import {
+  CloseIcon,
+  CollectionIcon,
+  FileIcon,
+  LinkIcon,
+  PaperclipIcon,
+  PlusIcon,
+  TrashIcon,
+  UploadIcon,
+} from '../components/icons'
 
 // The self-improvement pipeline as a kanban. Lane moves are the approvals:
 // idea → approved opens a GitHub issue the Claude Code action builds from;
@@ -426,9 +446,44 @@ function NewIdeaModal({
   const { user } = useAuth()
   const [title, setTitle] = useState('')
   const [description, setDescription] = useState('')
-  const [files, setFiles] = useState<File[]>([])
+  // Staged screenshots: pasted/dropped/picked images to upload on save, plus
+  // files already in the workspace that are reused by path (no second copy).
+  const [attachments, setAttachments] = useState<Attachment[]>([])
+  const [dropping, setDropping] = useState(false)
+  const [picking, setPicking] = useState(false)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
+
+  const stage = useCallback((incoming: Attachment[]) => {
+    if (!incoming.length) return
+    setAttachments((prev) => addAttachments(prev, incoming))
+  }, [])
+
+  // Paste a screenshot (⌘V) — the case this replaces the raw file input for.
+  // Listening on the window rather than the dialog means it works wherever the
+  // caret is (or isn't); it only acts when the clipboard actually carries image
+  // files, so pasting text into the title/description is untouched. The
+  // listener lives exactly as long as the modal.
+  useEffect(() => {
+    const onPaste = (e: ClipboardEvent) => {
+      const staged = uploadAttachments(Array.from(e.clipboardData?.files ?? []), crypto.randomUUID())
+      if (!staged.length) return
+      e.preventDefault()
+      stage(staged)
+    }
+    window.addEventListener('paste', onPaste)
+    return () => window.removeEventListener('paste', onPaste)
+  }, [stage])
+
+  const handleDrop = useCallback(
+    (e: React.DragEvent) => {
+      e.preventDefault()
+      setDropping(false)
+      stage(uploadAttachments(Array.from(e.dataTransfer?.files ?? []), crypto.randomUUID()))
+    },
+    [stage],
+  )
 
   async function save() {
     if (!title.trim() || !user) return
@@ -436,10 +491,17 @@ function NewIdeaModal({
     setError(null)
     try {
       const paths: string[] = []
-      for (const file of files) {
-        const path = `${user.id}/features/${Date.now()}-${file.name.replace(/[^a-zA-Z0-9._-]/g, '_')}`
-        const { error: upErr } = await supabase.storage.from('files').upload(path, file)
-        if (upErr) throw new Error(`Screenshot upload failed: ${upErr.message}`)
+      for (const attachment of attachments) {
+        if (attachment.kind === 'library') {
+          paths.push(attachment.path)
+          continue
+        }
+        const path = screenshotPath(user.id, attachment.name, crypto.randomUUID(), attachment.file.type)
+        try {
+          await uploadPickedFile(path, attachment.file)
+        } catch (upErr) {
+          throw new Error(`Screenshot upload failed: ${upErr instanceof Error ? upErr.message : 'error'}`)
+        }
         paths.push(path)
       }
       const { error: insErr } = await supabase.from('features').insert({
@@ -491,19 +553,64 @@ function NewIdeaModal({
               className="w-full resize-y rounded-lg border border-border-strong px-3 py-2 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary-soft"
             />
           </label>
-          <label className="block">
+          <div>
             <span className="mb-1 block text-xs font-medium text-muted">
-              Screenshots (optional) — if an admin approves this card, they're posted to the GitHub
-              issue (public on a public repo), so avoid capturing sensitive data.
+              Screenshots (optional) — paste one, drop it here, upload, or pick a file you already
+              have in Files. If an admin approves this card, they're posted to the GitHub issue
+              (public on a public repo), so avoid capturing sensitive data.
             </span>
-            <input
-              type="file"
-              accept="image/*"
-              multiple
-              onChange={(e) => setFiles(Array.from(e.target.files ?? []))}
-              className="block w-full text-sm text-muted file:mr-3 file:rounded-lg file:border-0 file:bg-surface-2 file:px-3 file:py-1.5 file:text-sm file:font-medium file:text-text"
-            />
-          </label>
+            <div
+              onDragOver={(e) => {
+                e.preventDefault()
+                setDropping(true)
+              }}
+              onDragLeave={() => setDropping(false)}
+              onDrop={handleDrop}
+              className={`rounded-lg border border-dashed p-3 ${
+                dropping ? 'border-primary bg-primary-soft/40' : 'border-border-strong'
+              }`}
+            >
+              {attachments.length > 0 && (
+                <div className="mb-3 space-y-2">
+                  {attachments.map((a) => (
+                    <AttachmentRow
+                      key={a.key}
+                      attachment={a}
+                      onRemove={() => setAttachments((prev) => removeAttachment(prev, a.key))}
+                    />
+                  ))}
+                </div>
+              )}
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()}
+                  className="flex items-center gap-1.5 rounded-lg bg-surface-2 px-3 py-1.5 text-sm font-medium text-text hover:bg-surface-hover"
+                >
+                  <UploadIcon className="h-4 w-4" /> Upload
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setPicking(true)}
+                  className="flex items-center gap-1.5 rounded-lg bg-surface-2 px-3 py-1.5 text-sm font-medium text-text hover:bg-surface-hover"
+                >
+                  <FileIcon className="h-4 w-4" /> Files & collections
+                </button>
+                <span className="text-[11px] text-faint">or paste (⌘V) / drag an image in</span>
+              </div>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*"
+                multiple
+                onChange={(e) => {
+                  stage(uploadAttachments(Array.from(e.target.files ?? []), crypto.randomUUID()))
+                  e.target.value = ''
+                }}
+                className="hidden"
+              />
+            </div>
+          </div>
           {error && <p className="text-sm text-red-600">{error}</p>}
         </div>
         <div className="flex justify-end gap-2 border-t border-border px-5 py-3">
@@ -517,6 +624,227 @@ function NewIdeaModal({
           >
             {saving ? 'Saving…' : 'Add idea'}
           </button>
+        </div>
+      </div>
+      {picking && (
+        <FilePickerModal
+          onClose={() => setPicking(false)}
+          onPick={(rows) => {
+            stage(rows.map(libraryAttachment))
+            setPicking(false)
+          }}
+        />
+      )}
+    </div>
+  )
+}
+
+// One staged screenshot. A pasted/dropped image previews from its own bytes;
+// a file picked out of Files is signed on demand (it lives in the private
+// bucket) and falls back to a plain chip while that resolves.
+function AttachmentRow({ attachment, onRemove }: { attachment: Attachment; onRemove: () => void }) {
+  const [url, setUrl] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (attachment.kind === 'upload') {
+      const objectUrl = URL.createObjectURL(attachment.file)
+      setUrl(objectUrl)
+      return () => URL.revokeObjectURL(objectUrl)
+    }
+    let alive = true
+    supabase.storage
+      .from('files')
+      .createSignedUrl(attachment.path, 3600)
+      .then(({ data }) => {
+        if (alive) setUrl(data?.signedUrl ?? null)
+      })
+    return () => {
+      alive = false
+    }
+  }, [attachment])
+
+  return (
+    <div className="flex items-center gap-3 rounded-lg border border-border bg-surface px-2 py-1.5">
+      {url ? (
+        <img src={url} alt="" className="h-10 w-10 shrink-0 rounded object-cover" />
+      ) : (
+        <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded bg-surface-2 text-faint">
+          <FileIcon className="h-4 w-4" />
+        </span>
+      )}
+      <div className="min-w-0 flex-1">
+        <div className="truncate text-xs font-medium text-text">{attachment.name}</div>
+        <div className="text-[11px] text-faint">
+          {attachment.kind === 'library' ? 'From Files' : 'Will upload on save'}
+        </div>
+      </div>
+      <button
+        type="button"
+        onClick={onRemove}
+        className="rounded-md p-1 text-faint hover:bg-red-50 hover:text-red-600"
+        title="Remove"
+      >
+        <CloseIcon className="h-4 w-4" />
+      </button>
+    </div>
+  )
+}
+
+// Pick screenshots that already live in the workspace — browse all your image
+// files, or narrow to one collection (the "add a collection" case: filter to it
+// and "Select all"). Picked files are attached BY PATH, so the card points at
+// the same object in the private `files` bucket instead of duplicating it.
+function FilePickerModal({
+  onClose,
+  onPick,
+}: {
+  onClose: () => void
+  onPick: (rows: LibraryFile[]) => void
+}) {
+  const [rows, setRows] = useState<LibraryFile[]>([])
+  const [collections, setCollections] = useState<{ id: string; name: string }[]>([])
+  const [members, setMembers] = useState<{ collection_id: string; file_id: string }[]>([])
+  const [collectionId, setCollectionId] = useState<string | null>(null)
+  const [search, setSearch] = useState('')
+  const [selected, setSelected] = useState<Set<string>>(new Set())
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    let alive = true
+    Promise.all([
+      supabase
+        .from('files')
+        .select('id, name, title, path, mime_type, bucket')
+        .order('created_at', { ascending: false })
+        .limit(200),
+      supabase.from('collections').select('id, name').order('name'),
+      supabase.from('collection_files').select('collection_id, file_id'),
+    ]).then(([filesRes, colRes, memberRes]) => {
+      if (!alive) return
+      setRows((filesRes.data as unknown as LibraryFile[]) ?? [])
+      setCollections(colRes.data ?? [])
+      setMembers(memberRes.data ?? [])
+      setLoading(false)
+    })
+    return () => {
+      alive = false
+    }
+  }, [])
+
+  const visible = useMemo(() => {
+    const fileIds = collectionId
+      ? new Set(members.filter((m) => m.collection_id === collectionId).map((m) => m.file_id))
+      : null
+    return filterLibraryFiles(rows, { fileIds, search })
+  }, [rows, members, collectionId, search])
+
+  const allSelected = visible.length > 0 && visible.every((r) => selected.has(r.id))
+
+  function toggle(id: string) {
+    setSelected((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
+  return (
+    <div className="fixed inset-0 z-[60] flex items-end justify-center bg-slate-900/40 sm:items-center sm:p-4" onClick={onClose}>
+      <div
+        className="flex max-h-[80vh] w-full max-w-lg flex-col overflow-hidden rounded-t-2xl bg-surface shadow-xl sm:rounded-2xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="border-b border-border px-5 py-3">
+          <h2 className="text-sm font-semibold text-text">Add from Files</h2>
+          <p className="mt-0.5 text-[11px] text-faint">Images only — the issue embeds them.</p>
+        </div>
+        <div className="space-y-3 border-b border-border px-5 py-3">
+          <input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search files"
+            className="w-full rounded-lg border border-border-strong px-3 py-2 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary-soft"
+          />
+          {collections.length > 0 && (
+            <div className="flex flex-wrap gap-1.5">
+              {[null, ...collections.map((c) => c.id)].map((id) => {
+                const c = collections.find((x) => x.id === id) ?? null
+                const active = collectionId === id
+                return (
+                  <button
+                    key={id ?? 'all'}
+                    onClick={() => setCollectionId(id)}
+                    className={`flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs ${
+                      active
+                        ? 'border-primary bg-primary-soft text-primary'
+                        : 'border-border bg-surface text-muted hover:border-border-strong'
+                    }`}
+                  >
+                    {c ? <CollectionIcon className="h-3 w-3" /> : null}
+                    {c ? c.name : 'All files'}
+                  </button>
+                )
+              })}
+            </div>
+          )}
+        </div>
+        <div className="flex-1 overflow-y-auto px-5 py-3">
+          {loading && <p className="py-6 text-center text-xs text-faint">Loading…</p>}
+          {!loading && visible.length === 0 && (
+            <p className="py-6 text-center text-xs text-faint">
+              No images here yet — upload one in Files first.
+            </p>
+          )}
+          <div className="space-y-1">
+            {visible.map((row) => (
+              <label
+                key={row.id}
+                className="flex cursor-pointer items-center gap-3 rounded-lg px-2 py-1.5 hover:bg-surface-hover"
+              >
+                <input
+                  type="checkbox"
+                  checked={selected.has(row.id)}
+                  onChange={() => toggle(row.id)}
+                  className="h-4 w-4 rounded border-border-strong"
+                />
+                <span className="min-w-0 flex-1 truncate text-sm text-text">
+                  {(row.title ?? '').trim() || row.name}
+                </span>
+                <span className="shrink-0 text-[11px] text-faint">{row.mime_type ?? 'image'}</span>
+              </label>
+            ))}
+          </div>
+        </div>
+        <div className="flex items-center justify-between gap-2 border-t border-border px-5 py-3">
+          <button
+            onClick={() =>
+              setSelected((prev) => {
+                const next = new Set(prev)
+                for (const row of visible) {
+                  if (allSelected) next.delete(row.id)
+                  else next.add(row.id)
+                }
+                return next
+              })
+            }
+            disabled={visible.length === 0}
+            className="text-xs font-medium text-muted hover:text-text disabled:opacity-50"
+          >
+            {allSelected ? 'Clear selection' : `Select all (${visible.length})`}
+          </button>
+          <div className="flex gap-2">
+            <button onClick={onClose} className="rounded-lg px-3 py-2 text-sm font-medium text-muted hover:bg-surface-hover">
+              Cancel
+            </button>
+            <button
+              onClick={() => onPick(rows.filter((r) => selected.has(r.id)))}
+              disabled={selected.size === 0}
+              className="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-white hover:bg-primary-strong disabled:opacity-50"
+            >
+              Attach {selected.size || ''}
+            </button>
+          </div>
         </div>
       </div>
     </div>
