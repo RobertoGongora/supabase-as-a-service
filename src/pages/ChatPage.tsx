@@ -10,6 +10,7 @@ import { uploadPickedFile } from '../lib/upload'
 import { estimateTokensFromChars } from '../lib/tokens'
 import { normalizeChatTitle, skillInvocationSentence } from '../lib/util'
 import { friendlyChatError, isAbortError } from '../lib/chatError'
+import { composerKeyAction } from '../lib/composerKeys'
 import { useOrchestratorContext } from '../lib/useModelContext'
 import { ContextUsage } from '../components/ContextMeter'
 import { useAuth } from '../contexts/AuthContext'
@@ -609,6 +610,11 @@ export default function ChatPage() {
 
   function handleSend(e: React.FormEvent) {
     e.preventDefault()
+    sendCurrent()
+  }
+
+  // The composer's send path, shared by the form's submit button and Enter.
+  function sendCurrent() {
     const text = input.trim()
     // A leading "/" is a skill command, not a message — handled by the menu.
     if (text.startsWith('/')) return
@@ -914,6 +920,14 @@ export default function ChatPage() {
     slashQuery != null
       ? onDemandSkills.filter((s) => s.name.toLowerCase().includes(slashQuery))
       : onDemandSkills
+
+  // Enter sends, so the keyboard and the send button must agree on when there
+  // is something to send (text, attachments, or an armed skill).
+  const canSend =
+    !sending &&
+    !uploading &&
+    !input.startsWith('/') &&
+    (input.trim().length > 0 || attachments.length > 0 || armedSkill !== null)
 
   return (
     <div className="relative flex h-full">
@@ -1512,17 +1526,21 @@ export default function ChatPage() {
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
                 onKeyDown={(e) => {
-                  // Enter inserts a newline (send is the ✈ button only), except
-                  // when the skill menu is open, where Enter picks the top skill.
-                  if (
-                    e.key === 'Enter' &&
-                    !e.shiftKey &&
-                    skillMenuOpen &&
-                    filteredSkills.length > 0
-                  ) {
-                    e.preventDefault()
-                    chooseSkill(filteredSkills[0])
-                  }
+                  // Enter sends, Shift+Enter inserts a newline, and an open
+                  // skill menu takes Enter to pick the top skill. Decision
+                  // logic lives in composerKeyAction (unit-tested).
+                  const action = composerKeyAction(
+                    {
+                      key: e.key,
+                      shiftKey: e.shiftKey,
+                      isComposing: e.nativeEvent.isComposing,
+                    },
+                    { skillMenuOpen, hasSkillMatch: filteredSkills.length > 0, canSend },
+                  )
+                  if (action === 'newline') return
+                  e.preventDefault()
+                  if (action === 'pickSkill') chooseSkill(filteredSkills[0])
+                  else if (action === 'send') sendCurrent()
                 }}
                 rows={1}
                 placeholder={
@@ -1547,11 +1565,7 @@ export default function ChatPage() {
               ) : (
                 <button
                   type="submit"
-                  disabled={
-                    uploading ||
-                    (!input.trim() && attachments.length === 0 && !armedSkill) ||
-                    input.startsWith('/')
-                  }
+                  disabled={!canSend}
                   className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-primary text-white transition hover:bg-primary-strong disabled:opacity-50"
                 >
                   <SendIcon className="h-5 w-5" />
